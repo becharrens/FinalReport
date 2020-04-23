@@ -657,6 +657,164 @@ Lastly, we would also like to investigate how the performance of the generated p
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % \chapter{Conclusion}
 
+\chapter{Notes}
+
+\section{Issues}
+\subsection{Code generation}
+\begin{itemize}
+    \item \textbf{Cyclic imports}:
+    
+    
+    (Nested) protocols can call each other, having mutually recursive chains of calls. This means that the implementations of the roles for different protocols cannot be in different packages, as doing so would cause a cyclic import error, because the implementation of roles in one package would call functions in the other package, and vice versa.
+    
+    Similarly, the functionality for setting up a call to a nested protocol can't be in a separate package from the implementation of the roles for the protocols, as the setup will involve calling the implementation of the dynamic participants in the subprotocol, and some of the roles will rely on the setup function when preparing a call to the nested protocol. 
+    
+    States in callbacks may also depend on one another, as a call to a nested protocol will involve creating the state for that role in the nested protocol from the 
+    
+    \item \textbf{Waiting for dynamic participants}:
+    
+    Initially, it seemed that creating a \texttt{WaitGroup} to wait for all of the initial participants in the protocol to finish might be enough. However, after looking at several examples it became apparent that this was not the case. In nested protocols, dynamic participants could take much longer to complete all their interactions than the initial participants. This could happen for example when the initial participants carry out multiple calls to nested protocols, sending only a few messages at the start before finishing their roles. If there still remain interactions between dynamic participants (only), not waiting for all the dynamically started participants would end the protocol prematurely. 
+    
+    \item \textbf{Invitations}: We will consider invitations as a special kind of message sent between participants. Therefore, an invitation can be a valid message to determine which branch of a choice has been chosen as long as the invitation is a unique first message amongst all the branches of the choice - sending different invitations for the same protocol is also valid. From an implementation perspective, invitations are messages containing a struct with the channels that the participant will need to communicate with the other participants in the nested protocol. This set of channels will be fresh in order to guarantee a separation between the parent and child sessions.
+
+    Roles in both global and nested protocols will have a separate set of channels stored in a struct which can be used to send and receive invitations to/from other participants in the same protocol. We chose to keep these channels separate from the other channels used to communicate with other participants because they are used to spend these special kinds of messages. However, this meant that the invitation channels' struct also had to include channels to send the invitation channels struct that the participant will use to send invitations in the nested protocol. Therefore, at the implementation level, our invitations consist of two messages, one for struct containing the channels the role will use to communicate with other participants and another one the struct containing the channels the role will use to send and receive invitations.
+    
+    Sent asynchronously. 
+    Link to well-formed choice over synchronous channels, and allowing processes to proceed as soon as possible.
+    
+    \item \textbf{Well-formed choice}: In order for a choice to be well-formed, all roles in the choice must receive a distinct/unique first message from an enabled participant. This choice message must be sent over a dedicated channel used only for this choice. As discussed previously, invitations are sent asynchronously. If there was a single channel to send \texttt{Msg2()} between \texttt{A} and \texttt{B}, then \texttt{B}, who doesn't participate in \texttt{NestedProto}, will be able to continue sending \texttt{Msg2()} after it sends the invitations for \texttt{NestedProto}. This means that there will be a race as to which message \texttt{A} will receive first, because \texttt{A} would be waiting to receive either the invitation for \texttt{NestedProto} or \texttt{Msg2()} \textit{on the same channel} which \texttt{B} used to send \texttt{Msg2()} in the first branch. If \texttt{Msg2()} were received first, then the protocol would be stuck in a deadlock, because \texttt{A} would mistakenly identify the second branch as the branch which \texttt{B} chose. Therefore, \texttt{A} would be stuck waiting for a message from \texttt{B} which would never come, since \texttt{B} would be waiting for \texttt{Msg3()} from \texttt{A}.
+    
+    Otherwise, if the channel used to receive the choice message is the same as a channel used to send a message in some branch, there might be a deadlock, as the non-choice message might be sent and received before the actual choice message for a different branch was received. This would cause the participant to think wrongly identify the execution branch which was chosen. For example, in Figure \ref{deadlock} if there weren't separate channels for Msg2() in the first branch and Msg2() in the the second branch then if channels were asynchronous.
+    
+\begin{figure}[h]
+\centering
+\lstset{language=Scribble}
+\begin{lstlisting}
+
+nested protocol NestedProto(role X; new role Y) {
+    [...]
+}
+
+global protocol Deadlock(role A, role B) {
+    choice at B {
+        B calls NestedProto(A);
+        Msg2() from B to A;
+        Msg3() from A to B;
+    } or {
+        Msg2() from B to A;
+        Msg4() from B to A;
+    }
+}
+
+local protocol Deadlock_A(self A, role B) {
+    choice at B {
+        accept X from B in NestedProto_X(self; new Y);
+        Msg2() from B;
+        Msg3() to B;
+    } or {
+        Msg2() from B;
+        Msg4() from B;
+    }
+}
+
+local protocol Deadlock_B(role A, self B) {
+    choice at self {
+        invite(A as X) in NestedProto;
+        create(role Y) in NestedProto;
+        Msg2() to A;
+        Msg3() from A;
+    } or {
+        Msg2() to A;
+        Msg4() to A;
+    }
+}
+
+local protocol NestedProto_X(self X, role Y) {
+    [...]
+}
+    \end{lstlisting}
+    \caption{Choice ambiguity}
+    \label{deadlock}
+\end{figure}{}
+
+    \item \textbf{Code gen design choices:}
+    
+    - Synchronous channels
+    
+    - Always send invitations over channels - unifority and single setup() function which can be called by different participants from different protocols
+    
+    - (Provisional) Callbacks using interfaces (structs which maintain state). Nested role may return result to caller function - this \textbf{will} \textbf{probably} be \textbf{removed}.
+    
+    - Probably don't allow protocols which don't have at least two participants??
+    
+    TODO: More elaborate examples and translation scheme from scribble to go. Possibly formalize Scribble projection as well.
+    
+    Possible two passes - one for channels and one for code generation
+    
+    Setup 
+    
+    \item \textbf{Code Gen} - name clashes
+    Eg. consider when a nested and not nested protocol are defined at the top level. They are both "different" since one is called through do and the other through calls, and only one of them is a "nested" protocol. Handle through prefixing (eg. nested\_<proto>).
+    
+    \item \textbf{Scribble language extension} - design
+    
+    \textbf{Global Types}
+    \begin{itemize}
+        \item Allow nested protocols to be defined at the top level as well as nested within other global and nested protocols, before any of the protocol's interactions. However, restrict the order of the declarations. All nested protocols at the top level have to be defined before the global protocols. This doesn't affect the expressiveness of the language, it is just a structural limitation which simplified parsing. 
+        \item Use "nested protocol" header to define a nested protocol
+        \item Split the roles in a nested protocol's role declaration into two to distinguish dynamic from non-dynamic participants 
+        \item Add new syntax for calling nested protocols: <role> calls <proto>(R1, ..., RN);
+        This was to ensure that this new construct did not clash with the existing "do <proto>" construct which was used to call other global protocols. Each of the two constructs can be used to call nested/global protocols, but trying to call a nested protocol with 'do' or a global protocol with 'nested' would be invalid. However, at an implementation level, both are treated in the same way.
+        \item Scopes
+        
+        Nested protocols introduce the notion of scopes to Scribble's protocol language. Before, everything was defined at the top level, so there was a single scope where protocols could be defined. However, nested protocols can be defined inside other protocols as well as at the top level, so it is important to ensure that protocols can only call protocols which are in scope. Much like functions in some programming languages, a protocol defines its own scope. All protocols within one scope are visible to one another, meaning that it is possible to define mutually recursive protocols. 
+        
+        Allowing scope definition can result in cases whose behaviour might not be very intuitive. If you define a nested protocol with the same name as the parent, any reference in the parent protocol's interactions to that name with call the nested protocol, not itself, because it shadows previous definition.
+        
+        \item Nested protocols, like global protocols must have at least two participants. Global protocols can only have 'static' participants, they cannot have dynamic participants. On the other hand nested protocols can have zero or more dynamic participants, but they must always have at least one non-dynamic participant. 
+        
+        Allowing a nested protocol to not have any dynamic participants does not impact the implementation in any way and allows greater flexibility when defining protocols. A nested protocol without dynamic participants is essentially the same as a global protocol, except that it's possible to define it inside other protocols, thereby restricting the scope from which it can be called.
+        
+        The restriction of having at least one (active) role which is not dynamic ensures that the protocol it is always possible for information to reach all the participants in a protocol. Allowing protocols made up of only dynamic participants means that a set of new participants would be brought together and they would perform a series of interactions and then leave without any of the roles in the calling scope communicating with them. This means that any information transferred during such a protocol cannot reach any of the participants in the calling scope, so the information from the exchanges in such a protocol is essentially lost. With the restriction in place, it would always be possible for a role which participated in a protocol call to transmit relevant information to other participants through further interactions with them.
+    \end{itemize}
+    
+    \item \textbf{Parsing} - Extending Scribble parser
+    Existing parser provided a wide array of options (although not all of them were implemented). (\textbf{TODO}: More detail about designing Scribble syntax for nested protocols).
+    
+    Scribble module design:
+    \begin{itemize}
+        \item module declaration
+        \item type declarations
+        \item nested protocol declarations - allow top-level nested protocol declarations to be able to define protocols which are in scope for all other nested/global protocols. They were grouped at together at the beginning of the file, as it simplified parsing.
+        \item global protocol declarations
+    \end{itemize}
+    
+    Scribble global type allows nested protocol definitions inside global and nested protocols.
+    
+    The naive implementation of the file structure defined above resulted in shift-reduce conflicts in the parser.
+    Originally nested protocol definitions simply had "nested protocol" keywords in their header instead of "global protocol". However, in the parser, protocol definitions in the parser could also optionally have protocol options before the protocol header (eg. \textbf{aux explicit} global protocol X(...) \{...\}). Because the aim was to preserve as much of the existing syntax intact, the protocol options were also added to nested protocol declarations. This was a problem, as the parser could not distinguish the boundary between nested and global protocol declarations at the top level if the declarations included the protocol options. In order to overcome this issue three approaches were considered:
+    \begin{itemize}
+        \item Drop the protocol options in nested protocol declarations altogether - protocol options were not implemented yet for global protocols, and they were not necessary for the initial imp implementation of nested protocols. 
+        \item Move the nested keyword before the protocol options in the declaration, thereby disambiguating between both kinds of declarations. 
+        \item Add an explicit delimiter (\textbf{TODO: Decide on delimiter here}) between the nested and global protocol declarations at the top level.
+    \end{itemize}
+    
+    AST for nested protocols was the same as as for global protocols, which meant that a lot of the exisiting implementation could be mimicked or used.
+    
+    \item \textbf{Protocol validation}
+    
+    Existing Scribble implementation allows defining multiple protocols in one module, when generating code the interactions of protocol which is being implemented will be expanded in order to remove all calls to other protocols. However in nested protocols, in order to mainitain a more modularized approach, interactions within a protocol are self-contained and implemented as a separate sub-session. This means that this process of expanding of the interactions was not needed. All that was required was to verify that all calls to nested/global protocols across all protcols were valid. This involved checking that:
+    \begin{itemize}
+        \item A call to a nested protocol
+        
+    \end{itemize}
+    \textbf{TODO: Check for unused roles}
+    \textbf{TODO: Mutually recursive protocol cycles}
+    
+    \item \textbf{Projection}
+    Checking consistent choice: Any of the roles involved in a call are viable candidates to be the first receiver of the choice.
+    \textbf{TODO: Verify - technically, the first message will always be for the role who will be the first participant in the protocol. Is it fine to consider all of them as a single unit, or should it just be the first one?}
+\end{itemize}{}
 
 %% bibliography
 \bibliographystyle{acm}
