@@ -1,0 +1,666 @@
+\documentclass[12pt,twoside]{report}
+
+% some definitions for the title page
+\newcommand{\reporttitle}{Session-Typed Programming with Nested Protocols in Go}
+\newcommand{\reportauthor}{Benito Echarren Serrano}
+\newcommand{\supervisor}{Prof. Nobuko Yoshida}
+\newcommand{\secondmarker}{Dr. Iain Phillips}
+\newcommand{\reporttype}{Final Report}
+\newcommand{\degreetype}{MEng Computing} 
+
+\newcommand{\comment}[1]{}
+\newcommand{\white}{\ \ \ \ \ \ \ \ \ \ \ \ }
+\newcommand{\pad}{\ \ \ \ \ \ }
+% load some definitions and default packages
+\input{includes}
+
+% load some macros
+\input{notation}
+
+% load title page
+\begin{document}
+\input{titlepage}
+\setcitestyle{square}
+
+
+% page numbering etc.
+\pagenumbering{roman}
+\clearpage{\pagestyle{empty}\cleardoublepage}
+\setcounter{page}{1}
+\pagestyle{fancy}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \begin{abstract}
+% Your abstract.
+% \end{abstract}
+
+\cleardoublepage
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \section*{Acknowledgments}
+% Comment this out if not needed.
+
+% \clearpage{\pagestyle{empty}\cleardoublepage}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%--- table of contents
+\fancyhead[RE,LO]{\sffamily {Table of Contents}}
+\tableofcontents 
+
+
+\clearpage{\pagestyle{empty}\cleardoublepage}
+\pagenumbering{arabic}
+\setcounter{page}{1}
+\fancyhead[LE,RO]{\slshape \rightmark}
+\fancyhead[LO,RE]{\slshape \leftmark}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Introduction}
+From the multiple cores in a CPU or GPU to the large server clusters in data centers, concurrency and parallelism have become an inherent part of computers and how they are used. This distributed computation model gives much higher performance and scalability, as multiple tasks can be executed at the same time, but it also makes reasoning about the software much harder, giving rise to concurrency bugs such as race conditions and deadlocks.\\
+
+In order to reason about these concurrent and parallel programs, researchers have come up with different memory models with different guarantees. The two most important ones are shared memory and message passing. Shared memory is an abstraction where all the components can read and write to a single piece of memory, and the changes that anyone makes become visible to the other participants. On the other hand, message passing expresses the communications between different components as a series of message exchanges, with each process having its own address space. %However reasoning about it can be tricky, as some compiler and hardware optimisations reorder the instructions, and when different threads read and write to the same location in memory, race conditions can occur.
+\\
+
+When writing a concurrent program, understanding the concurrency model that you are using is vital to writing correct code. However, unlike the type system which provides some correctness guarantees about the program at compile time (type safety of assignments, method calls, etc.), programming languages generally offer little to no support when it comes to statically detecting concurrency bugs (deadlocks, race conditions, etc.). Although separate tools for different programming languages have been developed to do this, like FindBugs\cite{FindBugs} or Jlint\cite{JLint} for Java\comment{How Good is Static Analysis at Finding Concurrency Bugs?/Find Bugs paper and chord paper}, they do not scale well with the size of the program and may not find all the concurrency bugs in the implementation\cite{ConcurrencyTools}. Session types\cite{binarysessiontypes1} provide an alternative approach for reasoning about inter-process communication in a message passing setting. They formalise the structured interactions between the participants as a protocol, ensuring that there are no communication errors or concurrency bugs in the program. Instead of trying to find bugs in an existing implementation, session types guarantee that the implementation will be free of concurrency bugs. Unlike data types, which express the type of information that will be stored in memory during execution, session types describe the communication exchanges between processes.\\
+
+% On the other hand, in message passing the components communicate by exchanging data in the form of explicit messages. This model can be used to express the communication between different components in a distributed system. The interactions of different participants exchanging typed data following a protocol can be formalized using session types \comment{ref session types}, which guarantee that communication errors such as deadlocks or receiving unexpected messages will not happen.
+Session types have been extended in different directions in order to be more expressive by providing more control over the interactions through means such as logical assertions\cite{logicaassertions}. The theory has also been extended to allow greater flexibility on how participants can join or leave a session\cite{multirolesessiontypes} or having a parametric number of participants acting a particular role (e.g. n workers)\cite{parametrictypes}.\\
+
+However, modern protocols have grown and become more complex. Often, they will have a highly modular structure, with a protocol calling or depending on other protocols. Moreover, different protocols may also share some common structure, with interactions between different participants following the same pattern. For instance, a protocol where a client wants to communicate with a server might initially involve authenticating with a different authentication server in order to get a valid token. This set of interactions with the authentication server could be considered a different subprotocol, which might also be used by many different applications in their authentication process. \\
+
+Demangeon et al.\cite{nestedprotocols} extended the existing session type theory in order to allow nesting of protocols using subsessions and invitations. This new theory allows structuring such protocols in a more intuitive way and even provides the ability to be able to reuse subprotocols for different use cases. They also allow multiple calls to the same protocol with potentially different parameters, making the protocols more concise and readable. Subprotocols can also invite new participants to participate in them, which allows defining protocols with a dynamic number of participants. We develop the first implementation of this theory to give a session type-based framework for the specification and safe implementation of distributed programs in Go.\\
+
+Existing session type-based frameworks required the number of participants to fixed at the start of the session. However, in nested protocols participants can be introduced into the session dynamically. Go can handle this kind of task very well by using two of its in-built primitives for concurrency\cite{godocs}: the ability to spawn thousands of lightweight threads called \textit{goroutines} and \textit{channels}, which allow inter-process communication through message passing. Dynamically delegating tasks by spawning new goroutines is common practice in Go, so this programming model is highly suitable for implementing nested protocols.
+
+%The toolchain generates an implementation of the different roles in the protocol, allowing the user to define logic through callbacks. 
+% \begin{figure}[tb]
+% \centering
+% \includegraphics[width = 0.4\hsize]{./figures/imperial}
+% \caption{Imperial College Logo. It is nice blue, and the font is quite stylish. But you can choose a different one if you do not like it.}
+% \label{fig:logo}
+% \end{figure}
+
+% Figure~\ref{fig:logo} is an example of a figure. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Background}
+
+\section{Session Types}
+\subsection{Overview}
+
+The two main models to reason about concurrent programs are shared memory and message passing. In shared memory, components communicate by reading and writing to a shared part of memory. This is how CPU threads and processes in a computer communicate with each other. However, reasoning about concurrent programs with this model can be tricky, as compiler and hardware optimisations can reorder the program's instructions\cite{sharedmemory}. On the other hand, in message passing inter-process communication is carried out by exchanging data in the form of explicit messages. This model closely resembles how communication is carried out in distributed systems.\\
+
+Message passing can be encoded using the $\pi$-calculus, a process algebra based on name passing which was developed by Milner\cite{milnerpicalc}. In this calculus, processes communicate by sending channel names over named channels. We present an asynchronous variant of the $\pi$-calculus in section \ref{pi-calculus}. Session types\cite{binarysessiontypes1} introduce a typing discipline for formalising the communication exchanges between processes in the $\pi$-calculus. The initial theory was defined only for two participants, but it was later extended by Honda et al.\cite{asyncmpst1, asyncmpst2} to include multiple parties. This allowed the session types to encode a larger number of protocols. Session types improve the reliability of distributed systems by guaranteeing the correctness of the programs. If the processes are well-typed, they will have session fidelity and will not suffer from communication errors such as deadlocks, type mismatches or protocol violations.\\
+
+There are already multiple implementations of session types for popular programming languages such as Java\cite{java}, C\cite{mpstc}, Go\cite{parametrictypes}, Python\cite{python}, Erlang\cite{erlang}, etc. Due to the set of features available to different programming languages, the implementation of MPST varies from one language to another. Some languages use rely on the type system to verify the correctness of the session's implementation at compile-time, while others may require run-time checks in order to detect protocol violations. 
+
+\subsection{Asynchronous $\pi$-Calculus}\label{pi-calculus}
+The $\pi$-calculus is a process algebra for encoding communicating systems. Processes communicate with one another through name passing, by sending and receiving channel names over named channels. The $\pi$-calculus is a simple yet powerful model which has been shown to be Turing-complete\cite{turingcomplete}, as it can encode the $\lambda$-calculus. The original theory was proposed by Robin Milner\cite{milnerpicalc}, but different variants have been proposed since. The first asynchronous $\pi$-calculus theory was presented in \cite{asyncandpicalc}, and we present a variant based on this theory, as defined in \cite{co406}.
+
+\begin{figure}[h]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rrlcr}
+        P,\ Q & ::= && \white & Processes \\[2.75pt]
+             &   & 0 & \white & Nil\ Process  \\[2.75pt]
+             & | & P\ |\ Q & \white & Parallel\ Composition \\[2.75pt]
+             & | & (\nu\ a)\ P & \white & Scope Restriction \\[2.75pt]
+             & | & !P & \white  & Replication \\[2.75pt]
+             & | & \overline{u}\langle v \rangle & \white & Output \\[2.75pt] 
+             & | & u(x).P & \white & Input \\\\
+        u,\ v & ::= && \white & Identifiers \\[2.75pt]
+              &   & a,\ b,\ c & \white & Names \\[2.75pt]
+              & | & x,\ y,\ z & \white & Variables \\
+        \end{array}
+    \end{equation*}
+    \caption{Syntax of monadic asynchronous  $\pi$-calculus}
+    \label{picalc_syntax}
+\end{figure}{}
+
+The syntax of the asynchronous $\pi$-calculus is defined in Figure \ref{picalc_syntax}:
+\begin{itemize}
+    \item $0$ is the nil process, which represents the process with no actions.
+    \item $P\ |\ Q$ is the parallel composition of two processes. These processes can execute in any order.
+    \item $(\nu\ a)\ P$ is the scope restriction operation. It creates a new named channel $a$ that can only be used within process P and will not interfere with any other existing names.
+    \item $!P$ is process replication. It represents the infinite parallel composition of process $P$: $P\ |\ P\ |\ P\ |\ ...$
+    \item $\overline{u}\langle v \rangle$ is the output operation, which sends $v$ over $u$.
+    \item $u(x).P$ is the input operation. It receives a a value over channel $u$. After receiving the value  it will continue executing process P, replacing all references to $x$ in $P$ with the received value.
+\end{itemize}
+
+Structural congruence is an equivalence relation which expresses that two processes are equivalent/interchangeable. We define the structural congruence of asynchronous $\pi$-calculus relation in Figure \ref{picalc_cong}.\\
+
+\begin{figure}[h]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rcrclcr}
+         & & P & \equiv & P & & Reflexivity\\[2.75pt]
+         P \equiv Q & \implies & Q &\equiv\ & P & & Symmetry  \\[2.75pt]
+         P \equiv Q\ \land\ Q \equiv R & \implies & P & \equiv & R & & Transitivity \\[2.75pt]
+         P \equiv Q\ & \implies & (\nu\ a)\ P & \equiv & (\nu\ a)\ Q & & Cong\ of\ Restriction \\[2.75pt]
+         P \equiv Q\ & \implies & P\ |\ R & \equiv & Q\ |\ R & & Cong\ of\ Parallel\ Comp \\[2.75pt]
+         P \equiv Q & \implies & u(x).P & \equiv & u(x).Q & & Cong\ of\ Input \\[2.75pt]
+         P \equiv Q & \implies & !P & \equiv & !Q & & Cong\ of\ Replication \\[2.75pt]
+         P\ =_\alpha \ Q\ & \implies & P & \equiv & Q &  & \alpha-equivalence \\[2.75pt]
+         & & P\ |\ (Q\ |\ R) & \equiv & (P\ |\ Q)\ |\ R & & Associativity \\[2.75pt]
+         & & P\ |\ Q & \equiv & Q\ |\ P & & Commutativity \\[2.75pt]
+         & & P\ |\ 0 & \equiv & P & & Zero \\[2.75pt]
+         & & !P & \equiv & P\ |\ !P & & Replication \\[2.75pt]
+         & & (\nu\ a)\ 0 & \equiv & 0 & & Res\ of\ Nil \\[2.75pt]
+         & & (\nu\ a)(\nu\ b)\ P\ & \equiv & (\nu\ b)(\nu\ a)\ P & & Res\ of\ Restriction \\[2.75pt]
+         a\ \notin\ fn(P) & \implies & \ P\ |\ (\nu\ a)\ Q & \equiv & (\nu\ a)(P\ |\ Q) & & Res\ over\ Parallel\ Comp
+        \end{array}
+    \end{equation*}
+    \caption{Structural congruence of monadic asynchronous  $\pi$-calculus}
+    \label{picalc_cong}
+\end{figure}{}
+
+The operational semantics of the $\pi$-calculus shown in Figure \ref{picalc_op_sem} define how the communication between the processes happens. The most important rule is \textsc{Comm}, which shows how the value sent by the output process is received by the input process and used in its continuation $P$ by replacing the references to the variable $x$ in $P$.
+
+\begin{figure}[h!]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{c}
+    \inference{}{\overline{a}\langle v \rangle\ |\ a(x).P\ \longrightarrow\ P\{\sfrac{v}{x}\}}[\textsc{Comm}]\\[20pt]
+    \inference{P\ \longrightarrow\ P'}{P\ |\ Q\ \longrightarrow\ P'\ |\ Q}[\textsc{Par}]\\[20pt]
+    \inference{P\ \longrightarrow\ P'}{(\nu\ a)\ P \longrightarrow\ (\nu\ a)\ P'}[\textsc{Res}]\\[20pt]
+    \inference{
+        P \equiv Q 
+        & Q\ \longrightarrow\ Q' 
+        & Q' \equiv P'
+    }{P\ \longrightarrow\ P'}[\textsc{Struct}]
+    \end{array}
+    \end{equation*}
+    \caption{Operational semantics of monadic asynchronous $\pi$-calculus}
+    \label{picalc_op_sem}
+\end{figure}{}
+
+It is important to notice that the output process $\bar{u} \langle v \rangle$ does not have any continuation. This reflects the asynchronous nature of the calculus. However, the asynchronous pi calculus presented above is very expressive; it is possible to encode other variants of $\pi$-calculus using it, including synchronous $\pi$-calculus, which allows continuation after output, and polyadic $\pi$-calculus, which allows exchanging vectors of messages at once. 
+
+% The intuition for encoding synchronous $\pi$-calculus is to use two additional channels to agree on a rendez-vous between the sender and the receiver. The sender will send a channel over which to communicate, and the receiver will send a private channel over which the exchange will actually take place. To encode polyadic synchronous $\pi$-calculus using monadic synchronous pi cal, 
+
+% \begin{table}[]
+%     \centering
+%     \begin{tabular}{l|p{6cm}|p{6cm}}
+%          &$monadic\ asynchronous\ \longrightarrow\ monadic \ synchronous$ & $mondadic\ synchronous\ \longrightarrow\ polyadic\ synchronous$ \\
+%          \hline
+%          \textsc{Input} & $\llbracket \bar{u} \langle v \rangle.P$\rrbracket = \hfill (\nu\ c)(\bar{u} \langle c \rangle\ |\ c(y).(\bar{y} \langle v\rangle\ |\ \llbracket P \rrbracket))& $\llbracket \bar{u} \langle v \rangle.P$\rrbracket = \hfill (\nu\ c)(\bar{u} \langle c \rangle\ |\ c(y).(\bar{y} \langle v\rangle\ |\ \llbracket P \rrbracket))
+         
+%     \end{tabular}
+%     \caption{Caption}
+%     \label{tab:my_label}
+% \end{table}{}
+
+\subsection{Binary Session Types}
+A session is a unit of conversation between participants. Session types provide a structured way to define and reason about the communications which take place between participants. In binary session types, these interactions happen between two participants. A session results from the binary composition of the processes of each participant. There are multiple similar formulations for session types in the literature, but Figure \ref{bst_session_calc} shows the syntax for processes in binary session types as presented in \cite{co406}. %presented in \textit{the CO406 course}\comment{replace with reference}.\\
+
+\begin{figure}[h]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rrlcr}
+        v & ::= & \underline{n} & \white & Integers \\[2.75pt]
+              & |  & \texttt{true}\ |\ \texttt{false} & \white & Booleans \\[2.75pt]
+              & | & \texttt{"str"} & \white & Strings \\\\
+        e,\ e' & ::= & v & \white & Values \\[2.75pt]
+              & |  & x & \white & Variables \\[2.75pt]
+              & | & e\ +\ e'\ |\ e\ -\ e'\ |\ -e & \white & Arithmetic \\[2.75pt]
+              & | & e\ =\ e'\ |\ e\ <\ e'\ |\ e\ >\ e' & \white & Relational \\[2.75pt]
+              & | & e\ \land\ e'\ |\ e\ \lor\ e'\ |\ \lnot e & \white & Logical \\
+              & | & e\ \bigoplus\ e' & \white & Non-determinism\\\\
+        
+        
+        p & ::= & Alice\ |\ Bob & \white & Participant\\\\
+        P,\ Q & ::= && \white & Processes \\[2.75pt]
+             &   & 0 & \white & Nil\ Process  \\[2.75pt]
+             & | & \overline{p} \langle e \rangle.P & \white & Output \\[2.75pt] 
+             & | & p(x).P & \white & Input\\[2.75pt]
+             & | & p\ \triangleright\ \{l_i:\ P_i\}_{i\in I}& \white & Branching\\[2.75pt]
+             & | & p\ \triangleleft\ l.P& \white & Selection \\[2.75pt]
+             & | & \texttt{if}\ e\ \texttt{then}\ P\ \texttt{else}\ Q & \white & Conditional \\[2.75pt]
+             & | & \mu X.P & \white  & Recursive\ Process \\[2.75pt]
+             & | & X & \white  & Recursive\ Variable \\\\
+             
+        M & ::= & p :: P\ |\ q :: Q & \white & Binary\ Composition
+        \end{array}
+    \end{equation*}
+    \caption{Processes in the binary session calculus}
+    \label{bst_session_calc}
+\end{figure}{}
+
+\begin{itemize}
+    \item $0$ is the nil process, which represents no actions.
+    \item $\overline{p} \langle e \rangle.P$ is the output operation, which sends the value $e$ to participant $p$ with continuation $P$ (the session calculus is synchronous).
+    \item $p(x).P$ is the input operation, which waits for participant $p$ to send a value $x$. Upon receiving the value, execution continues with $P$, with the received value replacing the references to $x$ in $P$.
+    
+    \item $p\ \triangleright\ \{l_i:\ P_i\}_{i\in I}$ is the branching operation. The process waits for participant $p$ to send a label $l\ =\ l_i$, for some $i \in I$. After receiving the label, execution continues with process $P_i$.
+    
+    \item $p\ \triangleleft\ l.P$ is the selection operation. The process sends label $l$ to participant $p$, then continues executing $P$.
+    
+    \item $\texttt{if}\ e\ \texttt{then}\ P\ \texttt{else}\ Q$ is the conditional operation. Expression $e$ should evaluate to a boolean. If $e$ evaluates to true then process $P$ is executed, otherwise, $Q$ is executed.
+    
+    \item $\mu X.P$ and $X$ are used to express recursion in the processes. The recursive process $\mu X.P \equiv P\{\sfrac{\mu X.P}{X}\}$, that is, you are able to replace all the instances of the recursion variable $X$ in P with $\mu X.P$. This allows you to carry out potentially infinite unfoldings of the process.
+    
+    \item $e\ \bigoplus\ e'$ expresses a non-deterministic choice between two expressions of the same type, so the expression could evaluate to the result of either of the two expressions. 
+    
+    \item The evaluation of expressions is only defined when the types match: logical expressions are only defined on expressions which evaluate to booleans, arithmetic expressions and $e\ <\ e'$ and $e\ >\ e'$ are only defined on integer values, and $e\ =\ e'$ is only defined if $e$ and $e'$ have the same type.
+\end{itemize}{}
+
+This session calculus is based on the $\pi$-calculus, so we can observe a great amount of similarities between the constructs in both calculi. The main differences are the introduction of the branching and selection operations (which can be encoded in the $\pi$-calculus), the definition of recursion and the conditional process. \\
+
+% The operational semantics for a session $M\ =\ p::P\ |\ q::Q$ are defined in a similar manner to the $\pi$-calculus. Additional rules are required for the branching/selection and the conditional processes. Reducing a recursive process may involve unfolding the recursion multiple times through structural congruence. For a formal definition please\\
+
+We introduce the definition of the session types in Figure \ref{bst_session_types}. We will not give the formal typing judgements for the processes, these can be found in \cite{co406, binarysessiontypes1, subtyping}\comment{Course material ref and possibly language primitives}. However, we give an intuition behind the correspondence between processes and their session types:
+
+\begin{figure}[h]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rrlcr}
+        S & ::= && \white & Session\ Type \\[2.75pt]
+             &   & \texttt{end} & \white & Termination  \\[2.75pt]
+             & | & p![U];\ S & \white & Value\ Send \\[2.75pt]
+             & | & p?[U];\ S & \white & Value\ Receive \\[2.75pt]
+             & | & p \bigoplus \{l_i\ :\ S_i\}_{i \in I} & \white& Selection \\[2.75pt]
+             & | & p \& \{l_i\ :\ S_i\}_{i \in I} & \white & Branching \\[2.75pt] 
+             & | & t & \white & Type\ Variable \\[2.75pt]
+             & | & \mu t.S & \white & Recursive\ Type\\\\
+        U & ::= & \texttt{int}\ |\ \texttt{bool}\ |\ \texttt{string}& \white & Sorts\ for\ Expressions
+        \end{array}
+    \end{equation*}
+    \caption{Syntax of binary session types}
+    \label{bst_session_types}
+\end{figure}{}
+
+\begin{itemize}
+    \item $Bob(x).\overline{Bob} \langle x + 1 \rangle.0:\ Bob?[\texttt{int}];\ Bob![\texttt{int}];\ \texttt{end}$ - In order to infer the sort of the input variable it may be necessary to see how it is used in the process.
+    \item $Alice\ \triangleleft\ choice.\overline{Alice} \langle \texttt{"hello"} \rangle.0:\ Alice \bigoplus \{choice:\ Alice![\texttt{str}];\ \texttt{end}\}$ - similarly for branching.
+    \item In order to be able to specify a type for a conditional process $\texttt{if}\ e\ \texttt{then}\ P\ \texttt{else}\ Q$, both branches $P$ and $Q$ must have the same type $S$, and therefore the type of the conditional process will also $S$.
+    \item $\mu t.S$ and $t$ are used to specify recursive types. They work much in the same way as recursive processes; recursive types can also unfolded by replacing instances of $t$ in $S$ by $\mu t.S$.
+\end{itemize} 
+
+\begin{figure}[h!]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rcl}
+             \overline{\texttt{end}} & = & \texttt{end}  \\[2.75pt]
+             \overline{p![U];\ S} & = & p?[U];\ \overline{S} \\[2.75pt]
+             \overline{p?[U];\ S} & = & p![U];\ \overline{S} \\[2.75pt]
+             \overline{p \bigoplus \{l_i\ :\ S_i\}_{i \in I}} & = & p \& \{l_i\ :\ \overline{S_i}\}_{i \in I}\\[2.75pt]
+             \overline{p \& \{l_i\ :\ S_i\}_{i \in I}} & = & p \bigoplus \{l_i\ :\ \overline{S_i}\}_{i \in I}\\[2.75pt]
+             \overline{\mu t.S} & = & \mu t.\overline{S}\\[2.75pt]
+             \overline{t} & = & t
+        \end{array}
+    \end{equation*}
+    \caption{Duality of binary session types}
+    \label{bst_duality}
+\end{figure}{}
+
+A key concept in binary session types is duality. When two processes are composed in a session, in order for the session to progress correctly, both processes must be carrying out complimentary operations. For instance, if $Alice$ is trying to send a string to $Bob$, $Bob$ must be waiting to receive a string from $Alice$, otherwise the protocol is stuck. Similarly, if $Bob$ is waiting for a label from $Alice$ to decide which branch to execute, $Alice$'s process must send one of the expected labels. Not only must the constructs be complimentary, but the types of the messages being sent must also match. Therefore, in order for a session to be correct, the processes involved must be duals of one another. This will ensure that the binary session will always make progress and that the session continues to be well-typed as the protocol is carried out. The duality of binary session types is shown in Figure \ref{bst_duality}.
+
+
+
+\subsection{Multiparty Session Types}
+Binary session types have limited applications to real-world problems, as standard protocols tend to be much more complex and involve more than two participants. These interactions cannot always be correctly expressed as the composition of binary sessions between different pairs of participants. \\
+
+Multiparty session types\cite{asyncmpst2} extend the theory by allowing protocols to have multiple participants, thus overcoming these limitations. The main idea is to introduce global types, which describe the multiparty interactions within a protocol from a global perspective, as well as deriving a specification of the behaviour of each participant as local session type through the projection operation. \\
+
+There are multiple variants of processes and their respective MPST in the literature. We present the syntax for synchronous multiparty session types defined in \cite{verygentleintrotompst} in Figure \ref{MPST_processes}.
+
+\begin{figure}[h]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rrlcr}
+        P,\ Q & ::= && \white & Processes \\[2.75pt]
+             &   & 0 & \white & Nil\ Process  \\[2.75pt]
+             
+             & | & \texttt{if}\ e\ \texttt{then}\ P\ \texttt{else}\ Q & \white & Conditional \\[2.75pt]
+             & | & \mu X.P & \white  & Recursive\ Process \\[2.75pt]
+             & | & X & \white  & Recursive\ Variable\\[2.75pt]
+             & | & p!l \langle e \rangle.P & \white & Output \\[2.75pt]
+             & | & \sum\limits_{i \in I} p?l_i(x_i).P_i & \white & Branching \\\\
+
+        M & ::= &&& Multiparty\ Session\\[2.75pt]
+        & | & p :: P\ & \white & Process\\[2.75pt]
+        & | & M\ |\ M\ & \white & Parallel\ Composition\\\\
+        
+        &&p,\ q,\ r,\ ... & \white & Participants\\[2.75pt]
+        &&e,\ e',\ ... & \white & Expressions\\[2.75pt]
+        &&x,\ y,\ z,\ ... & \white & Expression\  variables
+        \end{array}
+    \end{equation*}
+    \caption{Processes in multiparty session calculus}
+    \label{MPST_processes}
+\end{figure}{}
+
+Although the syntax varies slightly from the one showed in Figure \ref{bst_session_calc}, the semantics are essentially the same. The main difference is that processes now send/receive a label with the value they communicate. Because sessions now involve multiple participants, it is necessary to specify the other participant for the exchange (it would have been possible to omit this information in binary session types). \\
+
+In multiparty session types, when deriving the types for protocols we consider both the global type, which formally specifies the interactions between all the participants in the protocol from a global perspective and local session types, which characterize the interactions that each of the participants carry out within the global protocol. The parallel composition of processes satisfying the session types implements the behaviour of the global type. In this way, the implementations of the different participants are decoupled from one another, so they could be implemented separately and the overall implementation would be correct as long as they all follow their respective session types.
+
+\begin{figure}[h]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rrlcr}
+        S & ::= & \texttt{int}\ |\ \texttt{bool}\ |\ \texttt{string}& \white & Sorts\\\\
+        \textsc{Global\ Types} & && &\\[3pt]
+        G & ::= & \texttt{end} & \white & Termination  \\[2.75pt]
+             & | & p \longrightarrow q: \{l_i( S_i).G_i\}_{i \in I} & \white & Branching \\[2.75pt] 
+             & | & t & \white & Type\ Variable \\[2.75pt]
+             & | & \mu t.G & \white & Recursive\ Type\\\\
+             
+        \textsc{Local Types} &&&& \\[3pt]
+        T & ::= & \texttt{end} & \white & Termination  \\[2.75pt]
+          & | & \bigoplus_{i \in I}\ p!l_i(S_i).T_i & \white& Selection \\[2.75pt]
+          & | & \&_{i \in I}\ p?l_i(S_i).T_i & \white & Branching \\[2.75pt] 
+          & | & t & \white & Type\ Variable \\[2.75pt]
+          & | & \mu t.S & \white & Recursive\ Type
+        
+        \end{array}
+    \end{equation*}
+    \caption{Syntax of multiparty session types}
+    \label{MPST_types}
+\end{figure}{}
+
+We present the syntax for global and local types in Figure \ref{MPST_types}. Similarly to the syntax of processes, the local session types are almost the same as the binary session types. Global types introduce a single construct for branching/selection, $p \longrightarrow q:\{l_i(S_i).G_i\}_{i \in I}$, in which participant $p$ sends to $q$ the label (and corresponding value) which will determine what the continuation is.\\
+
+Each participant in the protocol enacts a role in the global type. The session type for each role is derived by projecting the global type onto that role, which essentially ignores all the interactions in which the role does not take part, leaving only the behaviour that needs to be implemented for that role within the protocol. The projection operation is defined in Figure \ref{MPST_projection}.\\
+
+\begin{figure}[h]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rcl}
+        
+        (p \longrightarrow p':\{l_i(S_i).G_i\}_{i \in I}) \upharpoonright q & = &
+        \begin{cases}
+            \bigoplus_{i \in I}\ p'!l_i(S_i).(G_i \upharpoonright q) & \text{if}\ q\ =\ p\\
+            \&_{i \in I}\ p?l_i(S_i).(G_i \upharpoonright q) & \text{if}\ q\ =\ p'\\
+            G_{i_0} \upharpoonright q & \text{where}\ i_0 \in I,\ \text{if}\ q \notin \{p,\ p'\}\\
+            & \text{and}\ \forall i,j \in I.\ G_i \upharpoonright q\ =\ G_j \upharpoonright q
+        \end{cases}\\[33pt]
+        (\mu t.G) \upharpoonright q & = & 
+        \begin{cases}
+            \mu t.(G \upharpoonright q) & \text{if}\ G \upharpoonright q \neq t\\
+            \texttt{end} & otherwise
+        \end{cases}\\[13pt]
+        t \upharpoonright q & = & t\\[2.75pt]
+        \texttt{end} \upharpoonright q & = & \texttt{end}\\[2.75pt]
+        \end{array}
+    \end{equation*}
+    \caption{Projection of Global Types to Local Types}
+    \label{MPST_projection}
+\end{figure}{}
+
+Projectng a role $q$ on $\texttt{end}$ and $t$ (type variable) has no impact, since $q$ is not participating in any exchange. When projecting on $p \longrightarrow p':\{l_i(S_i).G_i\}_{i \in I}$, depending on which role $q$ is undertaking in the exchange, the projected session type will change. 
+\begin{itemize}
+    \item If the $q = p$, then the projection is a selection, as the process decides which label and value to send to $p'$. The continuations $G_i$ must be projected onto $q$ as well.
+    \item Similarly, if $q = p'$, $q$ will be waiting for a message from $p$, therefore the projected session type is a branching operation. 
+    \item  When $q$ does not participate in the label exchange, the projection becomes more tricky. There are multiple approaches to resolve this situation; the one shown in Figure \ref{MPST_projection} is known as plain merge. Since $q$ does not know which branch will have been chosen by $p$, all branches must have the same continuation from $q$'s viewpoint, otherwise $q$ would not know which behaviour to implement. A different approach called the full merge allows a less restrictive definition\cite{verygentleintrotompst}.
+    
+\end{itemize}
+
+In binary session types, ensuring that both participants implemented session types which were duals of one another was enough to guarantee the correctness of the protocol. With multiple participants however, that is not the case anymore. Although you can ensure that each pair of participants has dual interactions, in order to guarantee the correctness that alone is not enough. The projection operation allows the composition to the different local types to satisfy the global type. Multiparty session types can therefore provide many guarantees about the communication well-typed multiparty sessions such as:
+\begin{itemize}
+    \item \textbf{Progress}: A multiparty session $M$ can either have ended ($M\ \equiv\ p :: 0$) or it can continue to execute (there exists $M'$ such that $M \longrightarrow M'$). This means that every sent message will eventually be received and every process waiting for a message eventually receives one. \cite{verygentleintrotompst, gentleintrotompst}
+    \item \textbf{Subject reduction}: If a well-typed session $M:\ G$ reduces to $M'$, then $M':\ G'$ is well typed\cite{verygentleintrotompst}.
+    \item \textbf{Type Safety}: If $M:\ G$ is well-typed then the session will never get stuck - a session where there are processes which have not finished must able to continue executing\cite{verygentleintrotompst}.
+    \item \textbf{Protocol fidelity}: All interactions which happen are expressed in the global type of the protocol\cite{gentleintrotompst}.
+    \item \textbf{Communication Safety}: There can never be a mismatch between the types of messages which are sent and which are expected\cite{gentleintrotompst}.
+\end{itemize}{}
+
+\subsection{Scribble API Endpoint Generation}\label{Scribble}
+Scribble\cite{scribble,featherweight} is a protocol description language based on multiparty session types. The Scribble framework translates this formal definition of the protocol into an implementation in one of various programming languages, thus allowing the theory of MPST to be used in a practical setting. A protocol describes the structure of the message exchanges between different roles, the entities which will participate in the protocol. The type signature of the messages specify both the kind of label that will be sent as well as the type of the payload.\\
+
+The first step that Scribble does is verifying that the protocol is well-formed, which means that local protocols can be generated for all the roles. Syntactically correct protocols can be ambiguous, for instance, if two choices of a branch expect messages with the same signature to be sent. The local protocols are derived by projecting the global type onto each of the roles. A communication finite state machine (CFSM) is then generated for each of the local protocols, which expresses the valid transitions between states that a role can carry out during the protocol. These transitions represent a message exchange with a different participant.\\
+
+An example of a global protocol can be seen in Figure \ref{scribble_protocol}, which shows a calculator protocol carried out by two roles: a client who enters the operands and the server who carries out the operation. The protocol has a recursive loop in which the client can choose to either send two numbers to multiply to the server, get the result back and start over again or quit the protocol. The resulting CFSM for the server $S$ can be seen in Figure \ref{scribble_fsm}.\\
+
+\begin{figure}
+    \centering
+    \lstset{language=Scribble}
+    \begin{lstlisting}
+global protocol Calc(role S , role C ) {
+    rec Loop {
+    	choice at C {
+    		multiply(int, int) from C to S;
+    		result(int) from S to C ;
+    		continue Loop ;
+    	} or {
+    		quit() from C to S ;
+    		terminate() from S to C ;
+    	}
+    }
+}
+    \end{lstlisting}
+    \caption{Calculator Protocol}
+    \label{scribble_protocol}
+\end{figure}{}
+
+\begin{figure}[h!]
+    \centering
+    \includegraphics[scale=0.53]{scribble_fsm.png}
+    \caption{CFSM for role S in Calculator Protocol}
+    \label{scribble_fsm}
+\end{figure}{}
+We describe how the CFSMs can be used to generate code in an OOP programming language like Java for the different endpoints (roles) in the protocol. Each of the states in the CFSM is converted to a class with methods for each of the outgoing transitions from the current state, which carry out the necessary communication operations and return the next state. The user can chain calls to these methods to carry out the protocol, transitioning only between valid states until the final state is reached, which does not have any outgoing transitions. \\
+
+In order to ensure the correctness of the implementation, every state must only be used once, which may require run-time checks. Implementations using the Scribble-generated APIs benefit from the correctness guarantees of MPST, ensuring that there are no communication errors and that the protocol is followed properly.\\
+
+\section{Nested Protocols}
+\subsection{Motivations}
+The theory of session types has been extended in different directions in order to be able to become more expressive. Some advances have made it possible to annotate the protocol with logical assertions to define extra properties that the protocol should meet\cite{logicaassertions}. Other developments have made it possible to express protocols with parametrised roles\cite{parametrictypes} (expressing protocols where $n$ participants carry out particular roles), or to have greater control over how participants can join or leave a session through a dynamic multiparty session\cite{multirolesessiontypes}. \\
+
+Demangeon et al.\cite{nestedprotocols} try to address a different challenge: protocols used in networking and in distributed systems are increasingly large. In many cases, they are highly modular, and often different protocols share the same structure. In order to better define and manage these protocols they extend the theory of session types to include nested protocols, which make it possible to define complex protocols using a simpler modular structure. Using this approach, protocols which have a similar structure can be grouped together under a single parametrised protocol, and complex protocols which might call other protocols can be expressed by making a call to those subprotocols. Moreover, different calls to the same subprotocol can be made with different parameters to achieve different behaviours. Their theory also allows subprotocols to bring in new participants by `inviting' them to participate. This can help simplify some protocols, as it allows you specify protocols where participants are brought in/contacted only if required.
+
+\subsection{Session Calculus}
+The theory they proposed is based on the idea of nesting protocols, where a parent protocol may define independent subprotocols and call them during its execution. Calls to a protocol can pass in different kinds of arguments as parameters such as values, roles from the parent protocol which will participate in the subprotocol and even other protocols which might be used during the call, similar to higher-order functions in functional programming.\\ 
+
+Subprotocols are implemented as subsessions. The participant calling the protocol will create a new private session for its execution, and will send \textit{internal invitations} to all the roles in the parent protocol which will participate, and \textit{external invitations} to bring in new agents. In this way, only the roles which have a access to the subsession, so the other roles in the parent session will not be able to interfere with it. This model thus allows private interactions in a public session. The Scribble language described in Section \ref{Scribble} also allows subprotocols. However, as opposed to this theory, the roles participating in Scribble protocols have to be known statically, meaning that a call corresponds to inlining the subprotocol.\\
+
+Calling subprotocols also abstract away their actual implementation, which means that the implementation of the subprotocol can be changed (e.g. to change how authentication is carried out or to improve the protocol's security) without changing the implementation of the parent protocol. Subprotocols also give a better separation between the different execution branches of the protocol, as different external participants can be invited only when required, reducing the complexity and utilisation of resources. For instance, in an HTTP-like protocol a proxy could have the choice of either returning a cached response directly or to initiate a \textit{Contact} protocol to involve the server and get the response. \\
+
+\begin{figure}[h]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rrlcr}
+        P,\ Q & ::= && \white & Processes \\[2.75pt]
+             &   & 0 & \white & Nil\ Process  \\[2.75pt]
+             & | & P\ |\ Q & \white & Parallel\ Composition  \\[2.75pt]
+             & | & a(x).P & \white & Receive\ Ext.\ Invitation \\[2.75pt]
+             & | & \overline{a}\langle s \rangle.P & \white & Send\ Ext.\ Invitation \\[2.75pt]
+             & | & P\ +\ P & \white & Non-determinism\\[2.75pt]
+             & | & k?[r, r]_{i \in I} \{l_i(x_i).P_i\}& \white & Branching \\[2.75pt]
+             & | & k![r, r]l \langle v \rangle.P & \white & Selection \\[2.75pt]
+             & | & (\nu\ u)\ P & \white & Scope\ Restriction\\[2.75pt] 
+             & | & \texttt{new}\ s\ \texttt{on}\ k\ \texttt{with}\ (\widetilde{v})\&(\widetilde{a}\ \texttt{as}\ \widetilde{r}).P & \white & Subprotocol\ Call\\[2.75pt]
+             & | & s \downarrow [r,\ r_1 : r_2](x).P & \white & Receive\ Internal\ Invitation\\[2.75pt]
+             & | & s \uparrow [r,\ r_1 : r_2]\langle s \rangle.P & \white & Send\ Internal\ Invitation\\[2.75pt]
+             & | & \mu X(x).P\langle v \rangle & \white  & Recursive\ Process \\[2.75pt]
+             & | & X\langle v \rangle & \white  & Recursive\ Variable\\\\
+
+        % M & ::= &&& Multiparty\ Session\\[2.75pt]
+        % & | & p :: P\ & \white & Process\\[2.75pt]
+        % & | & M\ |\ M\ & \white & Parallel\ Composition\\\\
+        &&s,\ k,\ ... & \white & Session\ names\\[2.75pt]
+        &&a,\ b,\ u,\ ... & \white & Shared\ channels\\[2.75pt]
+        &&v & \white & Values\\
+        &&r,\ r',\ ... & \white & Role\ Identifiers\\[2.75pt]
+        &&x,\ y,\ z,\ ... & \white & Variables
+        \end{array}
+    \end{equation*}
+    \caption{Processes in Session Calculus for Nested Protocols}
+    \label{nested_session_calculus}
+\end{figure}{}
+
+Figure \ref{nested_session_calculus} shows the session calculus presented in the paper which includes the syntax for invitations and defining protocols. The calculus is based on the $pi$-calculus and shares a lot of the constructs of other existing session calculi\cite{logicaassertions}. Names are divided into two kinds: session channels, which handle all exchanges within a session, and shared channels, used to send and receive external invitations. 
+\begin{itemize}
+    \item Parallel composition, scope restriction and the nil process are defined as before.
+    \item Recursion is also defined in a similar way as before, but it allows passing in a value to the recursive call which may be used when the recursive call is expanded. 
+    \item $a(x).P$ and $\overline{a}\langle s \rangle.P$ are used for receiving and sending external invitations over the shared channel $a$.
+    \item $P\ +\ P$ is the non-deterministic process. Execution can continue with either one of the two processes.
+    \item $k?[r_1, r_2]_{i \in I} \{l_i(x_i).P_i\}$ is the branching operation from $r_1$ to $r_2$ with continuation $P_i$ in session $k$. $k![r_1, r_2]l \langle v \rangle.P$ is the selection operation, its dual primitive. 
+    \item $s \downarrow [r,\ r_1 : r_2](x).P$ is the action for waiting for an internal invitation sent by $r$ to $r_1$ in order to play role $r_2$ in session $s$. 
+    \item $s \uparrow [r,\ r_1 : r_2]\langle s \rangle.P$ is the action of sending an invitation from $r$ to $r_1$ in order to play role $r_2$ in session $s$.
+    \item $\texttt{new}\ s\ \texttt{on}\ k\ \texttt{with}\ (\widetilde{v})\&(\widetilde{a}\ \texttt{as}\ \widetilde{r}).P$ is the operation for calling a subprotocol. Creates a new subsession $s$ within the parent session $k$, passing in arguments $\widetilde{v}$ and using shared channels $\widetilde{a}$ to send the external invitations.
+\end{itemize}
+
+\subsection{Session Types}
+The paper also extends the syntax of session types to include the types for defining and calling subprotocols as well as sending and receiving invitations. The extended syntax for local and global types is shown in Figure \ref{nested_session_types}. They define kinds (types for types), including $\diamond$, which represents the protocol type, in order to formalize the definition of protocols. The definition of global types is essentially the same as before:
+\begin{itemize}
+    \item Termination, branching and recursion are almost the same as before. They also define the type for parallel composition.
+    \item They introduce the construct $G_1\ \bigoplus^r\ G_2$ to represent located choice, where role $r$ can choose between two different branches. 
+    \item $\texttt{let}\ \mathcal{P}\ =\ \lambda\widetilde{r}^1,\ \widetilde{y} \mapsto \texttt{new}\ \widetilde{r}^2.G\ \texttt{in}\ G'$ defines a subprotocol $\mathcal{P}$. The vector of roles $\widetilde{r}^1$ defines a set of roles that will be carried out by roles from the parent protocol which will be internally invited, whereas the vector $\widetilde{r}^2$ contains the set of roles which will be externally invited. The protocol also takes in vector of values $\widetilde{y}$.
+    \item $r\ \texttt{calls}\ \mathcal{P}\langle \widetilde{r},\ \widetilde{y}\rangle.G$ is the subprotocol call carried out by role $r$, internally inviting roles $\widetilde{r}$ and passing in the values $\widetilde{y}$.
+\end{itemize}{}
+
+Similarly, the local session types are also very similar with the exception of the new constructs to handle invitations and protocol calls:
+\begin{itemize}
+    \item Termination, branching, selection and recursion are almost unchanged, and they introduce a type for parallel composition. 
+    \item The construct $T_1\ \bigoplus^r\ T_2$ represents located choice.
+    \item $\texttt{call}\ \mathcal{P}:G\ \texttt{with}\ (\widetilde{v}\ \texttt{as}\ \widetilde{y}:\widetilde{S})\&(\widetilde{r}^2).T$ is a call to the subprotocol $\mathcal{P}$, which has global type $G$, sending a vector of values $\widetilde{v}$ as arguments with sorts $\widetilde{S}$ and externally inviting the roles in $\widetilde{r}^2$ to participate in the subprotocol.
+    \item Sending and accepting invitations for a role $r$ are handled by the $\texttt{req}\ \mathcal{P}[r]\langle \widetilde{v} \rangle\ \texttt{to}\ r.T$ and $\texttt{ent}\ \mathcal{P}[r]\langle \widetilde{v} \rangle\ \texttt{from}\ r.T$ constructors respectively.
+\end{itemize}{}
+
+\begin{figure}[h]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rrlr}
+        Val & ::= & \texttt{int}\ |\ \texttt{bool}\ |\ \texttt{string} & Sorts\\\\
+        K, S & ::= & Role\ |\ Val\ |\ \diamond\ |\ (K_1\ \times\ ...\ \times\ K_n) \longrightarrow K & Kinds\\\\
+        
+        \textsc{Global\ Types} & & &\\[3pt]
+        G & ::= & \texttt{end} & Termination  \\[2.75pt]
+             & | & \texttt{let}\ \mathcal{P}\ =\ \lambda\widetilde{r}^1,\ \widetilde{y} \mapsto \texttt{new}\ \widetilde{r}^2.G\ \texttt{in}\ G' & Subprotocol\ Def\\[2.75pt]
+             & | & r\ \texttt{calls}\ \mathcal{P}\langle \widetilde{r},\ \widetilde{y}\rangle.G  & Subprotocol\ Call \\[2.75pt]
+             & | & r_1 \longrightarrow r_2: \sum_{i \in I}\{l_i( S_i).G_i\} &  Branching \\[2.75pt]
+             & | & G_1\ \bigoplus^r\ G_2   & Located Choice \\[2.75pt]
+             & | & G_1\ |\ G_2 & Parallel\ Composition \\[2.75pt]
+             & | & t & Type\ Variable \\[2.75pt]
+             & | & \mu t.G & Recursive\ Type\\\\
+             
+        \textsc{Local Types} &&& \\[3pt]
+        T & ::= & \texttt{end} &  Termination  \\[2.75pt]
+          & | & \texttt{send}[r]!_{i \in I}\{ l_i(x_i: S_i).T_i\} & Selection \\[2.75pt]
+          & | & \texttt{get}[r]?_{i \in I}\{l_i(x_i:S_i).T_i\} &  Branching \\[2.75pt] 
+          & | & T_1\ \bigoplus \ T_2   & Located Choice \\[2.75pt]
+          & | & T_1\ |\ T_2 & Parallel\ Composition \\[2.75pt]
+          & | & \texttt{call}\ \mathcal{P}:G\ \texttt{with}\ (\widetilde{v}\ \texttt{as}\ \widetilde{y}:\widetilde{S})\&(\widetilde{r}^2).T &  Subprotocol Call \\[2.75pt]
+          & | & \texttt{ent}\ \mathcal{P}[r]\langle \widetilde{v} \rangle\ \texttt{from}\ r.T &  Accept Invitation \\[2.75pt]
+          & | & \texttt{req}\ \mathcal{P}[r]\langle \widetilde{v} \rangle\ \texttt{to}\ r.T &  Send Invitation \\[2.75pt]
+          & | & t &  Type\ Variable \\[2.75pt]
+          & | & \mu t.T &  Recursive\ Type
+        
+        \end{array}
+    \end{equation*}
+    \caption{Syntax of Session Types for Nested Protocols}
+    \label{nested_session_types}
+\end{figure}{}
+
+As before, deriving the local types from the global type is done through the projection operation. It works very much in the same way as before, although now it becomes necessary to define a protocol environment to hold the types of the nested protocols, which gets updated by the $let\ in$ constructor.\\ 
+
+Figure \ref{nested_session_projection} shows the definition of projection for the nested protocol definition and call. Projection on the remaining constructors is defined in the standard way. Projection of a protocol definition updates the environment with the protocol's global type and signature and continues recursively projecting the type. When projecting a nested protocol call onto a role $r^p$, there are multiple cases to consider:
+\begin{itemize}
+    \item if $r^p$ is the caller but does not participate itself in the subprotocol, the projection must only send out the internal invitations in parallel, as well as executing the projection of the continuation.
+    \item if $r^p$ is the caller as well as a participant, then it must also send all the internal invitations to all the participating roles, but that includes itself, it must also accept its own invitation.
+    \item if $r^p$ did not call the protocol but is a participant of the protocol, then it must simply accept the invitation, with the continuation being the projection of the continuation of the global type.
+    \item otherwise, $r^p$ is neither a participant or the caller, so the projection is the projection of the continuation of the global type.
+\end{itemize}
+
+\begin{figure}[h]
+    \centering
+    \includegraphics[scale=0.45]{nested_session_projection.png}
+    \caption{Projection of Global Type in Nested Protocols\cite{nestedprotocols}}
+    \label{nested_session_projection}
+\end{figure}{}
+
+\subsection{Returning Values from Subprotocols}
+One limitation of the formulation expressed above is the inability of communication from a subsession back to the parent subsession. This means that it is impossible to express in a session type the relationship between a value calculated during a subsession and a value which a role might send after the nested protocol has ended. \\
+
+For example, in the Client-Proxy-Server protocol described in Figure \ref{nested_session_example}, the value the server returns is $ans$, but that value cannot be seen outside of the $Contact$ subprotocol, so the proxy (middle) can only return $ans_0$ after completing the call to $Contact$. However, there are no guarantees that these two values are the same. The paper proposes some further extensions to the syntax of session types in order to make the protocol end by returning a value to the role which initiated the call in order to be able to capture be able to return information from the subprotocol. \\
+
+Nevertheless, the current theory will suffice in most scenarios, as the kinds of the messages alone restrict what values can be sent, and it is up to the user's implementation to decide which value to send. Any value which satisfies this constraint can be considered a valid implementation of the protocol.
+\begin{figure}[h]
+    \centering
+    \includegraphics[scale=0.5]{nested_session_example.png}
+    \caption{Example of Global Session Type for CPS Protocol\cite{nestedprotocols}\comment{nested protocols snippet}}
+    \label{nested_session_example}
+\end{figure}{}
+
+% \subsection{Code Generation in Golang}
+% Gois a popular industrial systems language.1One of its primary design features is first-classlanguage support for lightweight concurrency on multicore machines. Go offers easy spawningof parallel coroutines, calledgoroutines, that are transparently multiplexed over an underlyingset of system threads. Goroutines communicate and synchronize via message passing over typedchannels, designed to alleviate the difficulties of low-level mechanisms such as mutexes, conditionvariables and memory barriers commonly used in systems programming. As first-class objects, aninteresting andusefulfeature is the ability to passchannels over channels.Go is also well-established in distributed systems; e.g., it is the implementation language offrameworks such as Kubernetes, Docker and Jaeger. As the aforementioned concurrency features ofGo are specific to shared memory, a significant class of distributed programming in Go is conductedusing channel-based networking libraries via TCP, HTTP, etc. as transports. Developers appreciateGo since distributed programming in practice often involves local concurrency: goroutines andchannels are effective for dealing locally with the inherent asynchrony of distributed interactions
+% For this project, the aim is to be able to generate a correct implementation of a protocol which uses nested protocols given a MPST-based specification. The target language for the framework to be developed is Go. Go is a popular programming language in industry. It has already been used to develop large projects like Docker and Kubernetes, and one of the reasons for its popularity is that it has inbuilt concurrency mechanisms. It has light-weight 
+
+% In order for a global type to be well-formed, it must be projectable and well-kinded. Informally, well-kind which informally means that a mapping from all the identifiers in the global type to kinds can be found which 
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Project Plan}
+The project comprises of two different stages, a more theoretical part, to adapt the theory of nested protocols to the Scribble language, and a practical part, to extend the Scribble's implementation to allow nested protocols. We present a breakdown of the timetable for both parts in the following sections. We also reserve 2 weeks in June to finish the report, which is due on the \textbf{15th June}. The aim is to work on the different sections of the report at the same time as working on the implementation in order to finish the project early and have time for proofreading the report. However, the last two weeks will also serve as a safety net to fill in any gaps left in the report at the end of the project.
+
+\section{Theory}
+We will first adapt the nested protocol theory to the Scribble language. This part of the project should be finished by the \textbf{end of February}. The proposed milestones for this part of the project are:
+\begin{enumerate}
+    \item $23^{nd}\ Jan\ -\ 31^{st}\ Jan$: Propose a syntax for defining nested protocols in Scribble.
+    
+    \item $1^{st}\ Feb\ -\ 14^{th}\ Feb$: Adapt the definition of projection presented in \cite{nestedprotocols} for projecting Scribble global protocols into local protocols.
+    
+    \item $15^{th}\ Feb\ -\ 28^{th}\ Feb$: Develop a scheme for generating Go code for the different roles using the local protocols. The aim is to verify the scheme using hand-written examples before proceeding to implementing code generation in Scribble.
+\end{enumerate}{}
+
+\subsection{Possible Considerations}
+In the Spring term there will be 3 coursework deadlines around Week 8, meaning that the 3rd milestone might extend a few days into the next stage of the project. In order to avoid this, it would be best to aim to finish the first two checkpoints a bit earlier than scheduled in order to ensure that the last checkpoint is finished as planned.
+
+\section{Practical}
+The second part of the project will involve extending the Scribble framework in order to be able to generate code for nested protocols and evaluate the performance of the generated protocols. We aim to finish this by the \textbf{end of May}. We have defined the following milestones for this part of the project:
+\begin{itemize}
+    \item \textit{Implementation} - $29^{th}\ Feb\ -\ 27^{th}\ April$
+    \begin{enumerate}
+        \item $29^{th}\ Feb\ -\ 08^{th}\ March$: Get familiar with Scribble code base and think about how to integrate nested  protocols with other features which are implemented. 
+        \item $21^{st}\ March\ -\ 31^{st}\ March$: Extend Scribble AST to include new syntax. If time permits, start looking at how to do well-formedness checks and projections. 
+        \item $1^{st}\ April\ -\ 11^{th}\ April$: Implement projection algorithm for nested protocols and add checks to ensure protocol is well-formed.
+        \item $12^{th}\ April\ -\ 27^{th}\ April$: Finish implementation of code generation from local protocols. 
+    \end{enumerate}{}
+    \item \textit{Evaluation} - $28^{th}\ April\ -\ 29th^{th}\ May$
+    \begin{enumerate}
+        \item $28^{th}\ April\ -\ 08^{th}\ May$: Generate implementations for different examples of protocols to ensure that the implementation of the framework is correct and to demonstrate the advantages of nested protocols.
+        \item $9^{th}\ May\ -\ 22^{nd}\ May$: Analyse performance of generated implementations for the different example protocols against conventional implementations. 
+        \item $23^{rd}\ May\ -\ 29^{th}\ May$: Use framework to generate code for a larger case study.
+    \end{enumerate}{}
+\end{itemize}{}
+
+\subsection{Possible Considerations}
+This is an implementation-heavy project, which means that the implementation part spans over a longer period of time. A month of time is reserved to evaluate the performance of the protocol implementations generated by the framework, but if the time required to implement some of the features exceeds the estimated amount, it might be necessary to cut down on the last milestone of the evaluation. First and foremost the evaluation should focus on checking the correctness of the implementation and demonstrate the benefits of using the new features. \\
+
+During the Spring term there is a planned two week gap between in March to allow for the exam and revision weeks. It will also be important to ensure that the project is progressing adequately during and after the Easter break, and have regular meetings with the supervisor throughout both terms to ensure that the project stays on track.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\chapter{Evaluation Plan}
+This project is mainly implementation-based. The main objective is to develop a tool which will make it possible to generate correct implementations of nested protocols based on the safety guarantees provided by session types. Therefore, the main task of the evaluation is to verify that the generated  implementations are correct.\\
+
+In order to ensure the correctness of the implementation, we will use a range of protocols with different structures that capture all the useful features which can be expressed by nested protocols. We will then ensure that all the generated implementations are correct.\\
+
+We also aim to use a larger case study to show the benefits of expressing a more complex protocol using nested protocols. This might involve using a real-world example and comparing its performance and code against an existing implementation.\\
+
+Lastly, we would also like to investigate how the performance of the generated protocols compares against that of hand-written implementations which do not rely on session types. In order to do this we might use a benchmark like CLBG\cite{CLBG}. We would want to minimise the performance penalty of having an automatically generated implementation of the protocol, aiming to have a performance different of a small percentage. 
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \chapter{Contribution}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \chapter{Experimental Results}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+% \chapter{Conclusion}
+
+
+%% bibliography
+\bibliographystyle{acm}
+% \nocite{*}
+\bibliography{interimbib}
+
+\end{document}
