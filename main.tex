@@ -599,16 +599,16 @@ Nevertheless, the current theory will suffice in most scenarios, as the kinds of
 % In order for a global type to be well-formed, it must be projectable and well-kinded. Informally, well-kind which informally means that a mapping from all the identifiers in the global type to kinds can be found which 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\chapter{Nested Protocol API Generation using Scribble }
+\chapter{API Generation using Scribble }
 % TODO: Verify this after extending Scribble background
 In this chapter we present a version of the Scribble protocol language as presented in \cite{scribble}, extended with constructs in order to be able to encode nested sessions. The code generation approach is different from the one previously discussed, as the code is generated directly from the session types. We describe the Scribble language extensions and the code generation approach to produce Golang APIs.
 
-\section{Scribble Extensions} 
+\section{Syntax Extensions} 
 We propose the following extensions to the scribble syntax for global protocols. Examples of these new features can be seen in Figure \ref{scribble-nested-global}:
 \begin{itemize}
-    \item Add \texttt{nested} keyword to define protocols with dynamic participants. Nested protocols can also include dynamic participants, which are separated from the regular participants by a \texttt{new} keyword in the protocol declaration. Like in the paper, nested protocols can be defined both at the top level and within other protocols. When a protocol is defined within another protocol it restricts the scope where it can be used, much like defining a nested function in a programming language. We also allow shadowing of protocol names. If you redefine a protocol in an inner scope, then it will take override the previous definition in the current scope and all its subscopes.
-    \item Introduce \texttt{calls} construct to introduce a subsession when a role calls a nested protocol. In a calls construct the dynamic participants of the nested protocol are omitted - it is only necessary to specify which existing roles which be participating, as the remaining roles will be dynamically created.
-    \item Modify semantics of \texttt{do} construct, which previously resulted in expanding the interactions of the protocol called protocol, to create a subsession. It is the same as a \texttt{calls} construct, where the first partipant in the protocol is treated as the caller. While the \texttt{calls} construct deals can be used to call nested protocols, the \texttt{do} construct can only be used for global prototocols.
+    \item The \texttt{nested} keyword can be used to define protocols with dynamic participants. Dynamic participants, are separated from the regular participants by a \texttt{new} keyword in the protocol declaration. Like in the paper, nested protocols can be defined both at the top level and within other protocols. When a protocol is defined within another protocol, it restricts the scope where it can be used, much like defining a nested function in a programming language. We also allow shadowing of protocol names. If you redefine a protocol in an inner scope, then it will take override the previous definition in the current scope and all its subscopes.
+    \item The \texttt{calls} construct introduces a subsession when a role calls a nested protocol. In a \texttt{calls} construct the dynamic participants of the nested protocol are omitted - it is only necessary to specify which existing roles which be participating, as the remaining roles will be dynamically created.
+    \item We modify the semantics of \texttt{do} construct, which previously resulted in expanding the interactions of the called protocol, to instead create a subsession. It's semantics are equivalent to a \texttt{calls} construct, where the first partipant in the protocol is treated as the caller. While the \texttt{calls} construct deals can be used to call nested protocols, the \texttt{do} construct can only be used for global prototocols.
 \end{itemize}
 
 \begin{figure}[h]
@@ -629,6 +629,12 @@ We propose the following extensions to the scribble syntax for global protocols.
     \end{figure}{}
 
 We also had to extend the definition of projection of Scribble global types presented in \cite{featherweight} to include these new constructs. We therefore also extended the syntax of Scribble local types with constructs for sending and receiving invitations following the session types presented in \cite{nestedprotocols}. Examples showcasing these new constructs can be seen in Figure \ref{scribble-nested-local}:
+
+\begin{itemize}
+    \item The sending of internal invitations is expressed by the \texttt{invite} construct, which specifies the roles which are going to participate, and the name of the protocol to which they are invited.
+    \item Bringing new participants into the subsession through external invitations is done through the \texttt{create} statement, which specifies the dynamic roles of the protocol to be created. This can be omitted if there are no dynamic participants.
+    \item Internal invitations are accepted through the \texttt{accept} construct, which contains information about the person who sent the inviation, the local protocol which the role is going to be carrying out as well as all the roles which will be participating as well.
+\end{itemize}
 
 % TODO: verify projection
 \begin{figure}[h]
@@ -658,6 +664,9 @@ We also had to extend the definition of projection of Scribble global types pres
         \label{scribble-nested-local}
     \end{figure}{}
 
+\section{Protocol Projection}
+
+The projection operation remains the same as defined in the Featherweight Scribble paper\cite{featherweight} for all constructs except the \texttt{choice} and \texttt{do}. 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
