@@ -598,54 +598,68 @@ Nevertheless, the current theory will suffice in most scenarios, as the kinds of
 
 % In order for a global type to be well-formed, it must be projectable and well-kinded. Informally, well-kind which informally means that a mapping from all the identifiers in the global type to kinds can be found which 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\chapter{Project Plan}
-The project comprises of two different stages, a more theoretical part, to adapt the theory of nested protocols to the Scribble language, and a practical part, to extend the Scribble's implementation to allow nested protocols. We present a breakdown of the timetable for both parts in the following sections. We also reserve 2 weeks in June to finish the report, which is due on the \textbf{15th June}. The aim is to work on the different sections of the report at the same time as working on the implementation in order to finish the project early and have time for proofreading the report. However, the last two weeks will also serve as a safety net to fill in any gaps left in the report at the end of the project.
 
-\section{Theory}
-We will first adapt the nested protocol theory to the Scribble language. This part of the project should be finished by the \textbf{end of February}. The proposed milestones for this part of the project are:
-\begin{enumerate}
-    \item $23^{nd}\ Jan\ -\ 31^{st}\ Jan$: Propose a syntax for defining nested protocols in Scribble.
-    
-    \item $1^{st}\ Feb\ -\ 14^{th}\ Feb$: Adapt the definition of projection presented in \cite{nestedprotocols} for projecting Scribble global protocols into local protocols.
-    
-    \item $15^{th}\ Feb\ -\ 28^{th}\ Feb$: Develop a scheme for generating Go code for the different roles using the local protocols. The aim is to verify the scheme using hand-written examples before proceeding to implementing code generation in Scribble.
-\end{enumerate}{}
+\chapter{Nested Protocol API Generation using Scribble }
+% TODO: Verify this after extending Scribble background
+In this chapter we present a version of the Scribble protocol language as presented in \cite{scribble}, extended with constructs in order to be able to encode nested sessions. The code generation approach is different from the one previously discussed, as the code is generated directly from the session types. We describe the Scribble language extensions and the code generation approach to produce Golang APIs.
 
-\subsection{Possible Considerations}
-In the Spring term there will be 3 coursework deadlines around Week 8, meaning that the 3rd milestone might extend a few days into the next stage of the project. In order to avoid this, it would be best to aim to finish the first two checkpoints a bit earlier than scheduled in order to ensure that the last checkpoint is finished as planned.
-
-\section{Practical}
-The second part of the project will involve extending the Scribble framework in order to be able to generate code for nested protocols and evaluate the performance of the generated protocols. We aim to finish this by the \textbf{end of May}. We have defined the following milestones for this part of the project:
+\section{Scribble Extensions} 
+We propose the following extensions to the scribble syntax for global protocols. Examples of these new features can be seen in Figure \ref{scribble-nested-global}:
 \begin{itemize}
-    \item \textit{Implementation} - $29^{th}\ Feb\ -\ 27^{th}\ April$
-    \begin{enumerate}
-        \item $29^{th}\ Feb\ -\ 08^{th}\ March$: Get familiar with Scribble code base and think about how to integrate nested  protocols with other features which are implemented. 
-        \item $21^{st}\ March\ -\ 31^{st}\ March$: Extend Scribble AST to include new syntax. If time permits, start looking at how to do well-formedness checks and projections. 
-        \item $1^{st}\ April\ -\ 11^{th}\ April$: Implement projection algorithm for nested protocols and add checks to ensure protocol is well-formed.
-        \item $12^{th}\ April\ -\ 27^{th}\ April$: Finish implementation of code generation from local protocols. 
-    \end{enumerate}{}
-    \item \textit{Evaluation} - $28^{th}\ April\ -\ 29th^{th}\ May$
-    \begin{enumerate}
-        \item $28^{th}\ April\ -\ 08^{th}\ May$: Generate implementations for different examples of protocols to ensure that the implementation of the framework is correct and to demonstrate the advantages of nested protocols.
-        \item $9^{th}\ May\ -\ 22^{nd}\ May$: Analyse performance of generated implementations for the different example protocols against conventional implementations. 
-        \item $23^{rd}\ May\ -\ 29^{th}\ May$: Use framework to generate code for a larger case study.
-    \end{enumerate}{}
-\end{itemize}{}
+    \item Add \texttt{nested} keyword to define protocols with dynamic participants. Nested protocols can also include dynamic participants, which are separated from the regular participants by a \texttt{new} keyword in the protocol declaration. Like in the paper, nested protocols can be defined both at the top level and within other protocols. When a protocol is defined within another protocol it restricts the scope where it can be used, much like defining a nested function in a programming language. We also allow shadowing of protocol names. If you redefine a protocol in an inner scope, then it will take override the previous definition in the current scope and all its subscopes.
+    \item Introduce \texttt{calls} construct to introduce a subsession when a role calls a nested protocol. In a calls construct the dynamic participants of the nested protocol are omitted - it is only necessary to specify which existing roles which be participating, as the remaining roles will be dynamically created.
+    \item Modify semantics of \texttt{do} construct, which previously resulted in expanding the interactions of the protocol called protocol, to create a subsession. It is the same as a \texttt{calls} construct, where the first partipant in the protocol is treated as the caller. While the \texttt{calls} construct deals can be used to call nested protocols, the \texttt{do} construct can only be used for global prototocols.
+\end{itemize}
 
-\subsection{Possible Considerations}
-This is an implementation-heavy project, which means that the implementation part spans over a longer period of time. A month of time is reserved to evaluate the performance of the protocol implementations generated by the framework, but if the time required to implement some of the features exceeds the estimated amount, it might be necessary to cut down on the last milestone of the evaluation. First and foremost the evaluation should focus on checking the correctness of the implementation and demonstrate the benefits of using the new features. \\
+\begin{figure}[h]
+    \centering
+    \lstset{language=Scribble}
+    \begin{lstlisting}
+    
+    nested protocol NestedProtocol(role X; new role Y) {
+        do GlobalProtocol(X, Y);
+    }
+    
+    global protocol GlobalProtocol(role A, role B) {
+        B calls NestedProtocol(A);
+    }
+        \end{lstlisting}
+        \caption{Scribble syntax for nested protocols}
+        \label{scribble-nested-global}
+    \end{figure}{}
 
-During the Spring term there is a planned two week gap between in March to allow for the exam and revision weeks. It will also be important to ensure that the project is progressing adequately during and after the Easter break, and have regular meetings with the supervisor throughout both terms to ensure that the project stays on track.
+We also had to extend the definition of projection of Scribble global types presented in \cite{featherweight} to include these new constructs. We therefore also extended the syntax of Scribble local types with constructs for sending and receiving invitations following the session types presented in \cite{nestedprotocols}. Examples showcasing these new constructs can be seen in Figure \ref{scribble-nested-local}:
+
+% TODO: verify projection
+\begin{figure}[h]
+    \centering
+    \lstset{language=Scribble}
+    \begin{lstlisting}
+    
+    local protocol NestedProtocol_X(role X; new role Y) {
+        invite(X, Y) to GlobalProtocol;
+        accept GlobalProtocol_A(X, Y);
+    }
+
+    local protocol NestedProtocol_Y(role X; new role Y) {
+        accept GlobalProtocol_B(X, Y);
+    }
+    
+    local protocol GlobalProtocol_A(role A, role B) {
+        accept NestedProtocol_X(A; new Y);
+    }
+
+    local protocol GlobalProtocol_B(role A, role B) {
+        invite(A) to NestedProtocol;
+        create(role Y) in NestedProtocol;
+    }
+        \end{lstlisting}
+        \caption{Scribble syntax for nested protocols}
+        \label{scribble-nested-local}
+    \end{figure}{}
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\chapter{Evaluation Plan}
-This project is mainly implementation-based. The main objective is to develop a tool which will make it possible to generate correct implementations of nested protocols based on the safety guarantees provided by session types. Therefore, the main task of the evaluation is to verify that the generated  implementations are correct.\\
-
-In order to ensure the correctness of the implementation, we will use a range of protocols with different structures that capture all the useful features which can be expressed by nested protocols. We will then ensure that all the generated implementations are correct.\\
-
-We also aim to use a larger case study to show the benefits of expressing a more complex protocol using nested protocols. This might involve using a real-world example and comparing its performance and code against an existing implementation.\\
-
-Lastly, we would also like to investigate how the performance of the generated protocols compares against that of hand-written implementations which do not rely on session types. In order to do this we might use a benchmark like CLBG\cite{CLBG}. We would want to minimise the performance penalty of having an automatically generated implementation of the protocol, aiming to have a performance different of a small percentage. 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 % \chapter{Contribution}
@@ -813,6 +827,9 @@ local protocol NestedProto_X(self X, role Y) {
     
     \item \textbf{Projection}
     Checking consistent choice: Any of the roles involved in a call are viable candidates to be the first receiver of the choice.
+
+    blajodfhlkasjhfkajsdbflaksjdb
+    fdsakjfhalsdk 
     \textbf{TODO: Verify - technically, the first message will always be for the role who will be the first participant in the protocol. Is it fine to consider all of them as a single unit, or should it just be the first one?}
 \end{itemize}{}
 
