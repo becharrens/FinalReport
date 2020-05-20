@@ -614,12 +614,42 @@ The well-formedness property for protocols remains the same as before\cite{neste
 
 \subsection{Global Protocols}
 
-We propose the following extensions to the scribble syntax for global protocols with nested protocols and subsessions. Examples of these new features can be seen in Figure \ref{scribble-nested-global}:
+We propose the following extensions to the scribble syntax for global protocols with nested protocols and subsessions:
+
 \begin{itemize}
-    \item The \texttt{nested} keyword can be used to define protocols with dynamic participants. Dynamic participants, are separated from the regular participants by a \texttt{new} keyword in the protocol declaration. Like in the paper, nested protocols can be defined both at the top level and within other protocols. When a protocol is defined within another protocol, it restricts the scope where it can be used, much like defining a nested function in a programming language. We also allow shadowing of protocol names. If you redefine a protocol in an inner scope, then it will take override the previous definition in the current scope and all its subscopes.
-    \item The \texttt{calls} construct introduces a subsession when a role calls a nested protocol. In a \texttt{calls} construct the dynamic participants of the nested protocol are omitted - it is only necessary to specify which existing roles which be participating, as the remaining roles will be dynamically created.
-    \item We modify the semantics of \texttt{do} construct, which previously resulted in expanding the interactions of the called protocol, to instead create a subsession. It's semantics are equivalent to a \texttt{calls} construct, where the first partipant in the protocol is treated as the caller. While the \texttt{calls} construct deals can be used to call nested protocols, the \texttt{do} construct can only be used for global prototocols.
+    \item $Module ::= N* P+$
+    \item $N ::=\nested\ \protocol\ pro(\role\ A_1,\ ...,\ \role\ A_n;\ \scrnew\ \role B_1,\ ...,\ \role\ B_m)\ \{G\}$
+    \item  $P ::=\nested\ \protocol\ pro(\role\ A_1,\ ...,\ \role\ A_n)\ \{G\}$
+    \item $G ::= $
+    
+    $\quad\quad|\ N\ G $
+    
+    $\quad\quad|\ \choice\ \at\ A\ \{G_1\}\ \scror\ ...\ \scror\ \{G_n\}$
+
+    $\quad\quad|\ a(S)\ \from\ A\ \scrto\ B;\ G$
+    
+    $\quad\quad|\ \rec\ t\ \{G\}$
+    
+    $\quad\quad|\ \continue\ t$
+    
+    $\quad\quad|\ \scrdo\ pro(A_1,\ ...\ ,\ A_n);\ G$
+
+    $\quad\quad|\ A\ \calls\ pro(A_1,\ ...\ ,\ A_n);\ G$
 \end{itemize}
+
+A Scribble module can contain many top-level nested protocols, but it must contain at least one global protocol (with no dynamic roles), which can be used as the entry point for the computation.\\
+
+Although nested protocols can be defined in any scope, for ease of parsing in the Scribble implementation and to provide more structured Scribble modules, we restrict where nested protocol can be declared. At the top-level, any nested protocols must be defined before the global protocol declarations, and within other protocols, they must be declared before any of the interactions. However, these restrictions do not impact the expressiveness of the implementation, as the order of the protocol declarations does not affect their scope.\\
+
+We further explain the different modifications to the Scribble syntax:
+\begin{itemize}
+    \item The \texttt{nested} keyword can be used to define protocols with dynamic participants. Dynamic participants, are separated from the regular participants by a \texttt{new} keyword in the protocol declaration. However, dynamic protocols need not have dynamic participants, in which case the latter part of the declaration can be omitted. Like in the paper, nested protocols can be defined both at the top level and within other protocols. When a protocol is defined within another protocol, it restricts the scope where it can be used, much like defining a nested function in a programming language. We also allow shadowing of protocol names. If you redefine a protocol in an inner scope, then it will take override the previous definition in the current scope and all its subscopes.
+    \item The \texttt{calls} construct introduces a subsession when a role calls a nested protocol. In a \texttt{calls} construct the dynamic participants of the nested protocol are omitted - it is only necessary to specify which existing roles which be participating, as the remaining roles will be dynamically created.
+    \item We modify the semantics of \texttt{do} construct, which previously resulted in expanding the interactions of the called protocol, to instead create a subsession. It's semantics are equivalent to a \texttt{calls} construct, where the first partipant in the protocol is treated as the caller. While the \texttt{calls} construct deals can be used to call nested protocols, the \texttt{do} construct can only be used for global protocols. 
+    \item The distinction between global and nested protocols is important, and needs to be verified to ensure that any protocol call used the correct construct. Moreover, protocol calls need to be verified to ensure that the call matches the signature of the protocol which is in scope, both for global and nested protocols.
+\end{itemize}
+
+Examples of these new features can be seen in Figure \ref{scribble-nested-global}.
 
 \begin{figure}[h]
     \centering
@@ -640,7 +670,33 @@ We propose the following extensions to the scribble syntax for global protocols 
 
 \subsection{Local Protocols}
 
-We also had to modify the definition of projection of Scribble global types presented in \cite{featherweight} to include these new constructs. We therefore extend the syntax of Scribble local types with constructs for sending and receiving invitations following the session types presented in \cite{nestedprotocols}. Examples showcasing these new constructs can be seen in Figure \ref{scribble-nested-local}, which correspond to the projections of the protocols shown in Figure \ref{scribble-nested-global}:
+We also had to modify the definition of projection of Scribble global types presented in \cite{featherweight} to include these new constructs. We therefore extend the syntax of Scribble local types with constructs for sending and receiving invitations following the session types presented in \cite{nestedprotocols}. 
+
+
+\begin{itemize}
+    \item $L ::=\scrlocal\ \protocol\ A@pro(\role A_1,\ ...,\ \role A_n;\ \scrnew\ \role B_1,\ ...,\ \role\ B_m)\ \{T\}$
+    \item $T ::= $
+    
+    $\quad\quad|\ \choice\ \at\ A\ \{T_1\}\ \scror\ ...\ \scror\ \{T_n\}$
+
+    $\quad\quad|\ a(S)\ \from\ B;\ T$
+
+    $\quad\quad|\ a(S)\ \scrto\ B;\ T$
+    
+    $\quad\quad|\ \rec\ t\ \{T\}$
+    
+    $\quad\quad|\ \continue\ t$
+    
+    $\quad\quad|\ \invite(A_1,\ ...\ ,\ A_n)\ \scrto\ pro;\ T$
+    
+    $\quad\quad|\ \create(\role\ B_1,\ ...\ ,\role\ B_n)\ \scrin\ pro;\ T$
+
+    $\quad\quad|\ \accept\ C@pro(A_1,\ ...\ ,\ A_n;\ \scrnew\ B_1,\ ...\ ,\ B_m)\ \from\ A;\ T$
+\end{itemize}
+
+After blurring the distinction between calling nested protocols and global protocols, we consider all local protocols to optionally have dynamic participants. We also expand the nested protocols so that all the protocol projections of a Scribble module are at the top level. Due to possible clashes between different protocols there may be a need to modify the protocol names to make them unique.
+
+The constructs introduced here closely ressemble the session types presented in the nested protocols paper\cite{nestedprotocols}, and we briefly describe them here:
 
 \begin{itemize}
     \item The sending of internal invitations is expressed by the \texttt{invite} construct, which specifies the roles which are going to participate, and the name of the protocol to which they are invited.
@@ -648,26 +704,28 @@ We also had to modify the definition of projection of Scribble global types pres
     \item Internal invitations are accepted through the \texttt{accept} construct, which contains information about the participant which sent the inviation, the local protocol which the role is going to be carrying out as well as all the other roles which will be participating as well.
 \end{itemize}
 
+Examples showcasing these new constructs can be seen in Figure \ref{scribble-nested-local}, which correspond to the projections of the protocols shown in Figure \ref{scribble-nested-global}:
+
 % TODO: verify projection
 \begin{figure}[h]
     \centering
     \lstset{language=Scribble}
     \begin{lstlisting}
     
-    local protocol NestedProtocol_X(role X; new role Y) {
+    local protocol X@NestedProtocol(role X; new role Y) {
         invite(X, Y) to GlobalProtocol;
-        accept GlobalProtocol_A(X, Y);
+        accept A@GlobalProtocol(X, Y);
     }
 
-    local protocol NestedProtocol_Y(role X; new role Y) {
-        accept GlobalProtocol_B(X, Y);
+    local protocol Y@NestedProtocol(role X; new role Y) {
+        accept B@GlobalProtocol(X, Y);
     }
     
-    local protocol GlobalProtocol_A(role A, role B) {
-        accept NestedProtocol_X(A; new Y);
+    local protocol A@GlobalProtocol(role A, role B) {
+        accept X@NestedProtocol(A; new Y) from B;
     }
 
-    local protocol GlobalProtocol_B(role A, role B) {
+    local protocol B@GlobalProtocol(role A, role B) {
         invite(A) to NestedProtocol;
         create(role Y) in NestedProtocol;
     }
@@ -679,6 +737,59 @@ We also had to modify the definition of projection of Scribble global types pres
 \section{Projection}
 
 The projection operation remains the same as defined in the Featherweight Scribble paper\cite{featherweight} for all constructs except the \texttt{choice} and \texttt{do}. For the projection of \texttt{choice} we extend the definition of the merging operation to incorporate invitations. The \texttt{do} construct is no longer expanded, it is treated as a call to a nested protocol where the participant which enacts the first role in the protocol is the one initiating the call with regards to projection.
+\\
+
+As in the original paper, projecting a global or nested protocol requires having an environment which keeps track of all the procols which are in scope. In the definition of projection below we assume that the given environment contains all the protocols which are in the scope of the protocol. We will describe a way of building such an environment later.
+
+\subsection{Projection of Global Protocols}
+We denote $\mathcal{P}(G)$ as the set of roles in protocol $G$. We define the projection of a Scribble nested protocol $P$ onto a role $A$ as follows: \\
+
+If $A \in \{A_1,\ ...\ ,\ A_m,\ B_1,\ ...\ ,\ B_m\}$ then:
+
+$(\nested\ \protocol\ P(\role\ A_1,\ ...\ ,\ \role\ A_n;\ \scrnew\ \role B_1,\ ...\ ,\ \role\ B_m)\ \{G\})\downarrow_A^{Env}\ =$
+
+$\scrlocal\ \protocol\ A@P(\role A_1,\ ...\ ,\ \role A_n;\ \scrnew\ \role B_1,\ ...\ ,\ \role\ B_m)\ \{G \downarrow_A^{Env}\}$\\
+
+Otherwise it is undefined. \\
+
+Similarly for a Scribble global protocol. If $A \in \{A_1,\ ...\ ,\ A_m\}$ then:
+
+$(\scrglobal\ \protocol\ P(\role\ A_1,\ ...\ ,\ \role\ A_n)\ \{G\})\downarrow_A^{Env}\ =$
+
+$\scrlocal\ \protocol\ A@P(\role A_1,\ ...\ ,\ \role A_n)\ \{G \downarrow_A^{Env}\}$\\
+
+Otherwise it is undefined.\\
+
+We define the projection of a global protocol $G$ onto a role $A$ as follows:
+
+
+
+\begin{figure}[h]
+    \centering
+    \begin{equation*}
+    \centering
+    \begin{array}{rcl}
+        
+        (a(S) & = &
+        \begin{cases}
+            \bigoplus_{i \in I}\ p'!l_i(S_i).(G_i \upharpoonright q) & \text{if}\ q\ =\ p\\
+            \&_{i \in I}\ p?l_i(S_i).(G_i \upharpoonright q) & \text{if}\ q\ =\ p'\\
+            G_{i_0} \upharpoonright q & \text{where}\ i_0 \in I,\ \text{if}\ q \notin \{p,\ p'\}\\
+            & \text{and}\ \forall i,j \in I.\ G_i \upharpoonright q\ =\ G_j \upharpoonright q
+        \end{cases}\\[33pt]
+        (\mu t.G) \upharpoonright q & = & 
+        \begin{cases}
+            \mu t.(G \upharpoonright q) & \text{if}\ G \upharpoonright q \neq t\\
+            \texttt{end} & otherwise
+        \end{cases}\\[13pt]
+        t \upharpoonright q & = & t\\[2.75pt]
+        \texttt{end} \upharpoonright q & = & \texttt{end}\\[2.75pt]
+        \end{array}
+    \end{equation*}
+    \caption{Projection of Global Types to Local Types}
+    \label{MPST_projection}
+\end{figure}{}
+
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
