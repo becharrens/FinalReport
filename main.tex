@@ -599,7 +599,7 @@ Nevertheless, the current theory will suffice in most scenarios, as the kinds of
 % In order for a global type to be well-formed, it must be projectable and well-kinded. Informally, well-kind which informally means that a mapping from all the identifiers in the global type to kinds can be found which 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\chapter{API Generation using Scribble }
+\chapter{Extending Scribble with Nested Protocols}
 % TODO: Verify this after extending Scribble background
 In this chapter we present a version of the Scribble protocol language as presented in \cite{scribble}, extended with constructs in order to be able to encode nested sessions. The code generation approach is different from the one previously discussed, as the code is generated directly from the session types. We describe the Scribble language extensions and the code generation approach to produce Golang APIs.
 
@@ -617,16 +617,15 @@ The well-formedness property for protocols remains pretty much the same as befor
 We propose the following extensions to the scribble syntax for global protocols with nested protocols and subsessions:
 
 \begin{itemize}
-    \item $Module ::= N* P+$
-    \item $N ::=\nested\ \protocol\ pro(\role\ A_1,\ ...,\ \role\ A_n;\ \scrnew\ \role B_1,\ ...,\ \role\ B_m)\ \{G\}$
-    \item  $P ::=\nested\ \protocol\ pro(\role\ A_1,\ ...,\ \role\ A_n)\ \{G\}$
+    \item $Module ::= N\!*\ P+$
+    \item $N ::=\nested\ \protocol\ pro(\role\ A_1,\ ...,\ \role\ A_n;\ \scrnew\ \role B_1,\ ...,\ \role\ B_m)\ \{PBody\}$
+    \item  $P ::=\nested\ \protocol\ pro(\role\ A_1,\ ...,\ \role\ A_n)\ \{PBody\}$
+    \item $PBody ::=  N\!*\ G$
     \item $G ::= $
-    
-    $\quad\quad|\ N\ G $
     
     $\quad\quad|\ \choice\ \at\ A\ \{G_1\}\ \scror\ ...\ \scror\ \{G_n\}$
 
-    $\quad\quad|\ a(S)\ \from\ A\ \scrto\ B;\ G$
+    $\quad\quad|\ \scrmessage{a}{S}\ \from\ A\ \scrto\ B;\ G$
     
     $\quad\quad|\ \rec\ t\ \{G\}$
     
@@ -643,6 +642,8 @@ We propose the following extensions to the scribble syntax for global protocols 
 A Scribble module can contain many top-level nested protocols, but it must contain at least one global protocol (with no dynamic roles), which can be used as the entry point for the computation.\\
 
 Although nested protocols can be defined in any scope, for ease of parsing in the Scribble implementation and to provide more structured Scribble modules, we restrict where nested protocol can be declared. At the top-level, any nested protocols must be defined before the global protocol declarations, and within other protocols, they must be declared before any of the interactions. However, these restrictions do not impact the expressiveness of the implementation, as the order of the protocol declarations within a scope does not matter.\\
+
+We denote the type of the 
 
 We further explain the different modifications to the Scribble syntax:
 \begin{itemize}
@@ -674,6 +675,7 @@ Examples of these new features can be seen in Figure \ref{scribble-nested-global
 
 \subsection{Scope}
 
+
 As it was briefly mentioned before, with our Scribble extension we introduce the notion of a protocol's scope, which was not handled very explicitly in the original paper, we will proceed to describe in more detail what restrictions need to be considered when writing Scribble protocols.\\
 
 In a Scribble module we have the top-level scope, where the user can define global and nested protocols which can be called from any protocol, no matter how deeply nested its declaration is. Much like functions, each protocol declaration introduces a new scope of its own.  Any nested protocols defined within are not visible outside that protocol, but can be used in that protocol's implementation and any nested protocols defined within.\\
@@ -682,7 +684,105 @@ The main restriction we have applied is that within any given scope, there must 
 
 The distinction between the $\scrdo$ and $\calls$ constructs for calling global and nested protocols makes it possible to unambiguously define a nested protocol and a global protocol with the same name without one definition shadowing the other. However, in this case the user must be careful when calling the protocol, especially if they have signatures with the same number of non-dynamic participants, as it can be easy to confuse which protocol call was intended. If the signatures are different this should be less of a problem, as trying to call a protocol with the wrong number of participants will produce an error.\\
 
-As we previously mentioned, defining a nested protocol with the same name as a nested protocol in an outer scope will override the definition in the current scope and any inner scopes. Global protocol definitions cannot be shadowed as they can only be defined within the top-level scope. When ensuring that protocols are well-formed, it is important to keep track of the protocols which are currently in scope and their signatures in order to ensure that all the protocol calls are valid. Once the validation step has been completed, ensuring that the scope restriction has not been violated, it is possible to "flatten" the representation of the protocols, resolving all name clashes by renaming protocols to ensure that all protocol names are unique. 
+As we previously mentioned, defining a nested protocol with the same name as a nested protocol in an outer scope will override the definition in the current scope and any inner scopes. Global protocol definitions cannot be shadowed as they can only be defined within the top-level scope. When ensuring that protocols are well-formed, it is important to keep track of the protocols which are currently in scope and their signatures in order to ensure that all the protocol calls are valid. 
+
+\subsection{Renaming Protocols}
+
+Once the validation of all the protocols has been completed, ensuring that the scope restrictions are not violated and that all protocol calls are valid, it is possible to "flatten" the representation of the protocols, resolving all name clashes by renaming protocols to ensure that all protocol names are unique. Moreover, if we make every protocol name unique, then we can remove the distinction between global and nested protocols and treat protocol calls to both global and nested protocols uniformly, as there can be no ambiguity with regards to which protocol is going to be called.\\
+
+The result of this renaming step is a set of protocols which do not contain any nested protocols within. We convert both nested and global protocols to this intermediate representation. However, even though this transformation allows us to treat both kinds of protocols uniformly, we will still require that the first protocol to be called is a global protocol. We define a slightly a slightly different syntax for it, which is essentially the same as a nested protocol declaration without any nested protocols inside:\\
+
+$\protocol\ P(\role\ A_1,\ ...,\ \role\ A_n;\ \scrnew\ \role B_1,\ ...,\ \role\ B_m)\ \{\;G\;\}$\\
+
+This renaming process requires building two environments: one to keep track of all the protocols which are in scope, which gets updated whenever new nested protocol definitions come up, and another one to keep track of all the unique protocol names which have already been used. We define an algorithm for renaming protocols in Figures \ref{renaming-interactions} and \ref{renaming-module}.
+
+\begin{figure}[h!]
+    \centering
+    \lstset{language=Pseudocode}
+    \begin{lstlisting}[escapeinside={(*}{*)}]
+    
+    def rename_protocol_calls(G, ScopeEnv):
+        match G with:
+            | A calls P((*$\roles{A}{n}$*)); (*$\mathtt{G_1}$*) ->
+                newP = ScopeEnv[P]
+                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
+                return A calls newP((*$\roles{A}{n}$*)); (*new$\mathtt{G_1}$*)
+            | do P((*$\roles{A}{n}$*)); (*$\mathtt{G_1}$*) -> 
+                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
+                return (*$\mathtt{A_1}$*) calls P((*$\roles{A}{n}$*)); (*new$\mathtt{G_1}$*)
+            | choice at A (*$\mathtt{\{\;G_i\,\}_\varinset{i}{I}}$*) ->
+                return choice at A (*$\mathtt{\{\;\;rename\_protocol\_calls(G_i,\ ScopeEnv)\;\;\}_\varinset{i}{I}}$*)
+            | rec t (*$\mathtt{\{\;G_1\,\}}$*) -> 
+                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
+                return rec t (*$\mathtt{\{\;newG_1\,\}}$*)
+            | a(S) from A to B; (*$\mathtt{G_1}$*) ->
+                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
+                return a(S) from A to B; (*new$\mathtt{G_1}$*)
+            | continue t ->
+                return continue t
+            | end ->
+                return end
+        
+    def rename_nested_protocols(nested_protocols, ScopeEnv, ProtocolNames):
+        renamed_protocols = (*$\emptyset$*)
+        for (nested protocol P(roles; new_roles) {nested_protos; G}) in nested_protocols:
+            newP = UNIQUE_NAME(P, ProtocolNames)
+            ScopeEnv = ScopeEnv[P -> newP]
+            ProtocolNames = ProtocolNames (*$\bigcup$*) {newP}
+            renamed_protocols = renamed_protocols (*$\bigcup$*) {nested protocol newP(roles; new_roles) {nested_protos; G}}
+        return (renamed_protocols, ScopeEnv, ProtocolNames)
+    \end{lstlisting}
+    \caption{Algorithm for renaming protocol interactions}
+    \label{renaming-interactions}
+\end{figure}
+\clearpage
+
+\begin{figure}[h!]
+    \centering
+    \lstset{language=Pseudocode}
+    \begin{lstlisting}[escapeinside={(*}{*)}]
+    def rename_and_flatten_protocols(nestedProtocol, ScopeEnv, ProtocolNames, AllProtocols):
+        match nestedProtocol with:
+          | nested protocol P((*$\rolessig{A}{n}$*); new (*$\rolessig{B}{m}$*)) {nested_protocols; G} ->
+            (ScopeEnv, ProtocolNames, nestedProtocols) = 
+                rename_nested_protocols(nestedProtocols, ScopeEnv, ProtocolNames)
+            for nestedProtocol in nestedProtocols:
+              ProtocolNames, AllProtocols = 
+                  rename_and_flatten_protocols(nestedProtocol, ScopeEnv, ProtocolNames, AllProtocols)
+
+            newG = rename_protocol_calls(G, ScopeEnv)
+            AllProtocols = AllProtocols (*$\bigcup$*) {(*$\;$*)protocol P((*$\rolessig{A}{n}$*); new (*$\rolessig{B}{m}$*)) {(*$\;$*)newG(*$\;$*)}(*$\;$*)}
+            return ProtocolNames, AllProtocols
+      
+    def rename_module(nested_protocols, global_protocols):
+        ProtocolNames = (*$\emptyset$*)
+        ScopeEnv = {}
+        TopLevelProtocols = (*$\emptyset$*)
+        AllProtocols = (*$\emptyset$*)
+        for (global protocol P((*$\rolessig{A}{n}$*)) {nested_protos; G}) in global_protocols:
+          ProtocolNames = ProtocolNames (*$\bigcup$*) P
+          TopLevelProtocols = TopLevelProtocols (*$\bigcup$*) {nested protocol P((*$\rolessig{A}{n}$*); (*$\emptyset$*)) {nested_protos; G}}
+
+        renamed_nested_protocols, ScopeEnv, ProtocolNames = 
+              rename_nested_protocols(nested_protocols, ScopeEnv, ProtocolNames)
+        TopLevelProtocols = TopLevelProtocols (*$\bigcup$*) renamed_nested_protocols
+        for protocol in TopLevelProtocols:
+            ProtocolNames, AllProtocols = rename_and_flatten_protocols(protocol, SetupEnv, ProtocolNames, AllProtocols)
+
+        return AllProtocols
+
+    \end{lstlisting}
+    \caption{Algorithm for renaming protocols in a Scribble module}
+    \label{renaming-module}
+\end{figure}
+\clearpage
+
+The algorithm described above recursively traverses all the different protocol scopes, generating new unique names for each of the protocols and updating any references to those protocols in the interactions of all the protocols for which they are in scope. 
+
+The proposed algorithm to rename all the protocols in a module consists of 3 phases:
+\begin{itemize}
+    \item The first step is to update both environments with all the protocols in the top-level scope. When resolving clashes between top-level nested and global protocols we decided to always update the nested protocol name and keep the global protocol name without changing it. This approach allows us to only keep a single environment for the nested protocols which are in the current scope, so when processing calls to global protocols ($\scrdo\ P(\roles{A}{n})$) the name will remain unchanged.
+\end{itemize}
 
 \subsection{Local Protocols}
 
@@ -695,9 +795,9 @@ We also had to modify the definition of projection of Scribble global types pres
     
     $\quad\quad|\ \choice\ \at\ A\ \{T_1\}\ \scror\ ...\ \scror\ \{T_n\}$
 
-    $\quad\quad|\ a(S)\ \from\ B;\ T$
+    $\quad\quad|\ \scrmessage{a}{S}\ \from\ B;\ T$
 
-    $\quad\quad|\ a(S)\ \scrto\ B;\ T$
+    $\quad\quad|\ \scrmessage{a}{S}\ \scrto\ B;\ T$
     
     $\quad\quad|\ \rec\ t\ \{T\}$
     
@@ -712,20 +812,26 @@ We also had to modify the definition of projection of Scribble global types pres
     $\quad\quad|\ \scrend$
 \end{itemize}
 
+\textbf{TODO: Move this to section about renaming protocols}
+
+
 After removing the distinction between calling nested protocols and global protocols, we consider all local protocols to optionally have dynamic participants. We also expand the nested protocols so that all the protocol projections of a Scribble module are at the top level. However, due to possible clashes between different protocols there may be a need to modify the protocol names to make them unique.\\
 
 We provide a brief description of the constructs introduced, which closely ressemble the session types presented in the nested protocols paper\cite{nestedprotocols}:
 
 \begin{itemize}
-    \item The sending of internal invitations is expressed by the \texttt{invite} construct, which specifies the roles which are going to participate, and the name of the protocol to which they are invited.
-    \item Bringing new participants into the subsession through external invitations is done through the \texttt{create} statement, which specifies the dynamic roles of the protocol to be created. This can be omitted if there are no dynamic participants.
-    \item Internal invitations are accepted through the \texttt{accept} construct, which contains information about the participant which sent the inviation, the local protocol which the role is going to be carrying out as well as all the other roles which will be participating as well.
+    \item The sending of internal invitations is expressed by the \texttt{invite} construct, which specifies the roles which are going to participate, and the name of the protocol to which they are invited. The syntax for the $\invite$ contruct shown above can be seen as a shorthand for sending a series of individual invitations in parallel (asynchronously) to all the roles who are going to participate in the protocol. Indeed, this idea could be expressed with an alternative notation such as:
+    $\{\invite(A_i)\ \scrto\ pro;\}_{i \in \{1,\ ...\ ,\ n\}};\ T$
+
+    \item Bringing new participants into the subsession through external invitations is done through the $\create$ statement, which specifies the dynamic roles of the protocol to be created. Similarly to the $\invite$ construct, the proposed syntax can be seen as a shorthand for the sending in parallel of external invitations.
+    
+    \item Internal invitations are accepted through the $\accept$ construct, which contains information about the participant which sent the inviation, the local protocol which the role is going to be carrying out as well as all the other roles which will be participating as well.
 \end{itemize}
 
 Examples showcasing these new constructs can be seen in Figure \ref{scribble-nested-local}, which correspond to the projections of the protocols shown in Figure \ref{scribble-nested-global}:
 
 % TODO: verify projection
-\begin{figure}[h]
+\begin{figure}[htb!]
     \centering
     \lstset{language=Scribble}
     \begin{lstlisting}
@@ -747,77 +853,168 @@ Examples showcasing these new constructs can be seen in Figure \ref{scribble-nes
         invite(A) to NestedProtocol;
         create(role Y) in NestedProtocol;
     }
-        \end{lstlisting}
-        \caption{Scribble syntax for nested protocols}
-        \label{scribble-nested-local}
-    \end{figure}{}
+    \end{lstlisting}
+    \caption{Scribble syntax for nested protocols}
+    \label{scribble-nested-local}
+\end{figure}{}
 
 \section{Projection}
-As in the original paper, projecting a global or nested protocol requires having an environment which keeps track of all the protocols which are in scope. In the definition of projection below we assume that the given environment contains all the protocols which are in the scope of the protocol. We will describe a way of building such an environment later.
+As in the original paper, projecting a global or nested protocol requires having an environment which keeps track of all the protocols which are in scope. In the definition of projection below we assume that the given environment contains all the protocols which are in the scope of the protocol. We will describe how such an environment could be built later. In the case of a protocol call, if the called protocol is not present in the environment, or the protocol call is not valid according to the environment (there is a mismatch between the protocol signature and the protocol call), then the projection is undefined.
 
 \subsection{Projection of Global Protocols}
-We denote $\mathcal{P}(G)$ as the set of roles in protocol $G$. We define the projection of a Scribble nested protocol $P$ onto a role $A$ as follows: \\
+We denote $\mathcal{P}(G)$ as the set of roles participating in protocol $G$. We define the projection of a Scribble nested protocol $P$ onto a role $A$ as follows: \\
 
-If $A \in \{A_1,\ ...\ ,\ A_m,\ B_1,\ ...\ ,\ B_m\}$ then:
+If $A \in \{\roles{A}{n},\ \roles{B}{m}\}$ then:
 
-$(\nested\ \protocol\ P(\role\ A_1,\ ...\ ,\ \role\ A_n;\ \scrnew\ \role\ B_1,\ ...\ ,\ \role\ B_m)\ \{G\})\downarrow_A^{Env}\ =$
+$(\nested\ \protocol\ P(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{G\})\downarrow_A^{Env}\ =$
 
-$\scrlocal\ \protocol\ A@P(\role\ A_1,\ ...\ ,\ \role\ A_n;\ \scrnew\ \role\ B_1,\ ...\ ,\ \role\ B_m)\ \{G \downarrow_A^{Env}\}$\\
+$\scrlocal\ \protocol\ A@P(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{G \downarrow_A^{Env}\}$\\
 
-Otherwise it is undefined. \\
+% Otherwise it is undefined. \\
 
-Similarly for a Scribble global protocol. If $A \in \{A_1,\ ...\ ,\ A_m\}$ then:
+% Similarly for a Scribble global protocol. If $A \in \{A_1,\ ...\ ,\ A_m\}$ then:
 
-$(\scrglobal\ \protocol\ P(\role\ A_1,\ ...\ ,\ \role\ A_n)\ \{G\})\downarrow_A^{Env}\ =$
+% $(\scrglobal\ \protocol\ P(\rolessig{A}{n})\ \{G\})\downarrow_A^{Env}\ =$
 
-$\scrlocal\ \protocol\ A@P(\role A_1,\ ...\ ,\ \role A_n)\ \{G \downarrow_A^{Env}\}$\\
+% $\scrlocal\ \protocol\ A@P(\rolessig{A}{n})\ \{G \downarrow_A^{Env}\}$\\
 
 Otherwise it is undefined.\\
 
-The projection operation remains the same as defined in the Featherweight Scribble paper\cite{featherweight} for all constructs except the \texttt{choice} and \texttt{do}. For the projection of \texttt{choice} we extend the definition of the merging operation to incorporate invitations. The \texttt{do} construct is no longer expanded, it is treated as a call to a nested protocol where the participant which enacts the first role in the protocol is the one initiating the call.\\
-
-We define the projection of a global protocol $G$ onto a role $A$ as follows:
+ We define the projection of a global protocol $G$ onto a role $A$ as follows:\\
     
-$\quad\quad|\ \choice\ \at\ A\ \{G_1\}\ \scror\ ...\ \scror\ \{G_n\}$
+ 
+ $(\scrmessage{a}{S}\ \from\ B\ \scrto\ C;\ G') \project\ =\ $\\[3.5pt]
+\begin{math}
+    \begin{cases}
+        \scrmessage{a}{S}\ \scrto\ C;\ (G' \project) & if\ A\ =\ B\\[3pt]
+        \scrmessage{a}{S}\ \from\ B;\ (G' \project) & if\ A\ =\ C\\[3pt]
+        G' \project & otherwise
+    \end{cases}\\\\
+\end{math}
+ 
+ $(\rec\ t\ \{G'\}) \project\ =$\\[3.5pt]
+ \begin{math}
+    \begin{cases}
+        \rec\ t\ \{G' \project\} & if\ A\ \in\ \mathcal{P}(G')\\
+        \scrend & otherwise
+    \end{cases}\\\\
+\end{math}
+ 
+ $(\continue\ t) \project\ =\ \continue\ t$\\
+ 
+ $(\scrend) \project\ =\ \scrend$\\
+ 
+ $(C\ \calls\ P(\roles{A}{n});\ G') \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}\ =$\\[3.5pt]
+ \begin{math}
+    \begin{cases}
+        \invite(\roles{A}{n})\ \scrto\ P; & if\ A\ =\ C,\ \exists i. C\ =\ A_i\\[0.25pt]
+        \create(\rolessig{B}{m})\ \scrin\ P; & \\[0.25pt]
+        \accept\ D_i@P(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ C; & \\[0.25pt]
+        (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \\[13pt]
 
-$\quad\quad|\ a(S)\ \from\ A\ \scrto\ B;\ G$\\
+        \invite(\roles{A}{n})\ \scrto\ P; & if\ A\ =\ C,\ C \notin \{A_1,\ ...\ ,\ A_n\} \\[0.25pt]
+        \create(\rolessig{B}{m})\ \scrin\ P; &\\[0.25pt]
+        (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) &\\[13pt]
 
-$(\rec\ t\ \{G\}) \project\ =\ \rec\ t\ \{G \project\}$\\
+        \accept\ D_i@P(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ C; & if\ A\ \neq\ C,\ \exists i. C\ =\ A_i\\[0.25pt]
+        (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \\[13pt]
 
-$(\continue\ t) \project\ =\ \continue\ t$\\
-
-$\quad\quad|\ \scrdo\ pro(A_1,\ ...\ ,\ A_n);\ G$
-
-$\quad\quad|\ A\ \calls\ pro(A_1,\ ...\ ,\ A_n);\ G$
-
+        (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & otherwise
+    \end{cases}\\\\
+\end{math}
 
 
+ $(\scrdo\ P(A_1,\ ...\ ,\ A_n);\ G') \project\ =\ (A_1\ \calls\ P(A_1,\ ...\ ,\ A_n);\ G') \project$\\
+ 
+Let:
+
+$\mathtt{MSG\_FROM}(R)\ =$
+
+$\quad \quad |\ \scrmessage{a}{S}\ \from\ R\ to\ C$
+
+$\quad \quad |\ B\ \calls\ P(\roles{A}{n})$
+
+$\mathtt{RECV\_FROM}(R)\ =$
+
+$\quad \quad |\ \scrmessage{a}{S}\ \from\ R$
+
+$\quad \quad |\ \accept\ D@P(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ R$
+
+$\mathtt{FIRST\_RECEIVERS}(G)\ =$
+
+\begin{math}
+    \begin{cases}
+        \{B\} & if\ G\ =\ \scrmessage{a}{S}\ \from\ A\ \scrto\ B;\ G'\\
+        \{\roles{A}{n}\} & if\ G\ =\ A\ \calls\ P(\roles{A}{n});\ G'\\
+        \emptyset & otherwise
+    \end{cases}\\\\
+\end{math}
+
+We then define the projection of $\choice$ as:\\
+
+ $(\choice\ \at\ B\ \{G_i\}_{i \in I}) \project\ =$\\[3.5pt]
+ \begin{math}
+    \begin{cases}
+        \choice\ \at\ B\ \{(G_i \project)\}_\varinset{i}{I} & if A\ =\ B\ or\ A\ \in\ \displaystyle \bigcap_\varinset{i}{I}\ \mathtt{FIRST\_RECEIVERS}(G_i)\\
+        \displaystyle \bigsqcup_\varinset{i}{I}\ (G_i \project) & otherwise\\
+    \end{cases}\\[2pt]
+\end{math}
+
+where:
+\begin{itemize}
+    \item $G_i\ =\ \mathtt{MSG\_FROM}(B)_i;\ G'_i$
+    \item $\bigsqcup$ is the full merge operator, which is defined in Figure \ref{fullmerge}
+\end{itemize}
+ 
+
+Otherwise, the projection of $\choice$ is undefined.\\
+
+
+The projection operation remains pretty much the same as defined in the Featherweight Scribble paper\cite{featherweight} for all constructs except the $\choice$ and $\scrdo$. The $\scrdo$ construct is no longer expanded before projection, it is treated as a call to a nested protocol where the participant which enacts the first role in the protocol is the one initiating the call. There is no problem in making this conversion once i all protocol names have been made unique, as that will ensure that there is no ambiguity with regards to which protocol will be called. \\
+
+The Scribble $\choice$ construct doesn't have a very well-defined semantics and projection definition. Different implementations of Scribble may have slightly different definitions about what constitutes a well-formed choice.  We base our definition on the Multiparty Session Types\cite{gentleintrotompst} and the definition given in the Featherweight Scribble paper\cite{featherweight}.\\
+
+Before taking nested protocols into account, we define a $\choice$ contruct as a directed choice from the participant making the choice, e.g. $B$, to a single participant, who receives a distinct first message from $B$ in each choice branch. This first message will allow the receiving role to identify the choice $B$ makes. However, with the addition of nested protocols and invitations, labeled messages $\scrmessage{a}{S}$ are not the only type of messages which can be sent. A protocol call involves sending invitations to different roles, and receiving different invitations will also allow participants to discern which choice $B$ makes. Therefore, we allow having combination of protocol calls and message exchanges initiated by $B$ as the first interactions in the $\choice$ branches, which we encode by enforcing that the global type of each branch must be $\mathtt{MSG\_FROM}(B)_i;\ G'_i$. We still require that each first message is unique in each branch - two protocol calls are only equal if the protocol name is the same and the same participants are invited to carry out the same roles in the called protocol.\\
+
+Taking invitations into account makes it possible for a $\choice$ to not have a single first receiver, because during the setup of a protocol call multiple invitations are sent out in parallel. Any of the roles which receive one of these invitations could potentially be considered as the first receiver in the choice. We therefore build the set of possible receivers as the intersection of the first receivers in each branch. This intersection must not be empty for the choice to be valid. As before, sending a labeled message reduces the number of candidates to the receiver of the message. This we extract this information from the global types of each branch with the function $\mathtt{FIRST\_RECEIVERS}(G)$.\\
+
+Moreover, because the sending of invitations is asynchronous and a role can send an invitation to itself, it is valid to have a $\choice$ where the role making the choice is also a potential first receiver. This can occur if each branch of tahe $\choice$ starts with a protocol call in which that role also participates. This cannot happen if any branch starts with a labeled message exchange, as it is invalid for a role to send a message to itself.\\
+
+
+% TODO: cite full merge
+We extend the definition of projection for $\choice$ for the case where the projected role is not the role making the choice or one of the roles receiving the first message. The definition proposed in the nested protocols paper only applied a simple merge over all the branches, where the continuation of the role in each of the branches must be exactly the same. We apply the full merge\cite{} instead, modified to take into account both invitations and labeled messages. A definition of the full merge can be seen in Figure \ref{fullmerge}.
 
 \begin{figure}[h]
+
     \centering
-    \begin{equation*}
-    \centering
-    \begin{array}{rcl}
-        
-        (a(S) & = &
-        \begin{cases}
-            \bigoplus_{i \in I}\ p'!l_i(S_i).(G_i \upharpoonright q) & \text{if}\ q\ =\ p\\
-            \&_{i \in I}\ p?l_i(S_i).(G_i \upharpoonright q) & \text{if}\ q\ =\ p'\\
-            G_{i_0} \upharpoonright q & \text{where}\ i_0 \in I,\ \text{if}\ q \notin \{p,\ p'\}\\
-            & \text{and}\ \forall i,j \in I.\ G_i \upharpoonright q\ =\ G_j \upharpoonright q
-        \end{cases}\\[33pt]
-        (\mu t.G) \upharpoonright q & = & 
-        \begin{cases}
-            \mu t.(G \upharpoonright q) & \text{if}\ G \upharpoonright q \neq t\\
-            \texttt{end} & otherwise
-        \end{cases}\\[13pt]
-        t \upharpoonright q & = & t\\[2.75pt]
-        \texttt{end} \upharpoonright q & = & \texttt{end}\\[2.75pt]
-        \end{array}
-    \end{equation*}
-    \caption{Projection of Global Types to Local Types}
-    \label{MPST_projection}
-\end{figure}{}
+
+    $T_1\ \bigsqcup\ T_2\ =\ T_1 \quad \text{if}\;\ T_1\ =\ T_2$\\[15pt]
+
+    $\choice\ \at\ B\ \{\mathtt{RECV\_FROM}(B)_i;\ T_i\}_\varinset{i}{I}\ \bigsqcup\ \choice\ \at\ B\ \{\mathtt{RECV\_FROM}(B)_j;\ T'_j\}_\varinset{j}{J}\ =$\\[5pt]
+    $\choice\ \at\ B\ \{\mathtt{RECV\_FROM}(B)_i;\ T_i\}_\varinset{i}{I\;\setminus\;J}\ \bigcup\ \{\mathtt{RECV\_FROM}(B)_j;\ T'_j\}_\varinset{j}{J\;\setminus\;I}\ \bigcup$\\
+     $\{\mathtt{RECV\_FROM}(B)_k;\ T_k\ \bigsqcup\ T'_k\}_\varinset{k}{I\;\cap\;J}$\\[13pt]
+
+    % $\rec\ t\ \{T_1\}\ \bigsqcup\ \rec\ t\ \{T_2\}\ =\ \rec\ t\ \{T_1\ \bigsqcup\ T_2\}$\\[13pt]
+
+    % $\continue\ t\ \bigsqcup\ \continue\ t\ =\ \continue\ t$\\[13pt]
+
+    % $\scrend\ \bigsqcup\ \scrend\ =\ \scrend$\\[13pt]
+
+     $T_1\ \bigsqcup\ T_2$ is undefined otherwise\\[7.5pt]
+
+    \caption{Definition of the full merge operator}
+    \label{fullmerge}
+\end{figure}
+
+Two local types can always be merged if they are the same type. Two $\choice$ constructs can be merged if the same role is making the choice, and the first interaction in every branch is receiving a different message (invitation or labeled message) from that role. The merged type is a $\choice$ which combines the branches from both types. The branches which do not overlap between the two $\choice$ constructs can remain the same, but the branches where the first received message is common to both of them must be recursively merged to produce a new type. To reduce the number of cases to consider in the definition of the merge operator we implicitly use the equivalence between a $\choice$ with a single branch and the interactions of that branch without the choice: $\choice\ \at\ R\ \{T\}\ \equiv\ T$.\\
+
+The projection of the $\calls$ construct is very similar to the projection of the protocol call in the original paper\cite{nestedprotocols}, and it considers the same 4 cases. When the projected role is making a call, it must send all the invitations to the other participants, potentially including itself. It must also send external invitations to the new dynamic participants which will take part in the subsession, if any. If there are no dynamic participants, then the $\create$ construct can be omitted. If the projected role is taking part in the subsession, then it must also accept the invitation to the appropriate role in the nested protocol from the caller. If the projected role is neither the caller or a participant in the protocol call, then the protocol call can be ignored.
+
+% In the definition of projection defined above we assume that protocol names are unique, so that there will be no naming clashes when generating the local protocol signatures and there will not be any ambiguity with regards to which protocol to call. 
+
+
+Protocol calls require the 
+
 
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%

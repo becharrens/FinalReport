@@ -31,4 +31,61 @@
 \newcommand{\scrin}{{\color{blue}\mathtt{in}}}
 \newcommand{\accept}{{\color{blue}\mathtt{accept}}}
 
-\newcommand{\project}{\downarrow_A^{Env}}
+\newcommand{\project}{\projectenv{Env}}
+\newcommand{\projectenv}[1]{\downarrow_A^{#1}}
+\newcommand{\roles}[2]{#1_1,\ ...\ ,\ #1_#2}
+\newcommand{\rolessig}[2]{\role\ #1_1,\ ...\ ,\ \role\ #1_#2}
+\newcommand{\scrmessage}[2]{\mathtt{#1}(\mathtt{#2})}
+\newcommand{\varinset}[2]{{#1 \in #2}}
+
+\lstset{frame=tb,
+  language=Java,
+  aboveskip=3mm,
+  belowskip=3mm,
+  showstringspaces=false,
+  columns=flexible,
+  basicstyle={\ttfamily},
+  numbers=left,
+  numberstyle=\tiny\color{gray},
+  keywordstyle=\color{blue},
+  commentstyle=\color{dkgreen},
+  stringstyle=\color{mauve},
+  breaklines=true,
+  breakatwhitespace=true,
+  tabsize=3,
+  frame=single,
+}
+\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{gray}{rgb}{0.5,0.5,0.5}
+\definecolor{mauve}{rgb}{0.58,0,0.82}
+\definecolor{granate}{rgb}{0.68, 0.02, 0.55}
+
+\lstdefinelanguage{Scribble}{
+  keywords={global, protocol, rec, role, choice, at, continue, do, from, to, var, if, in, while, do, else, case, break, calls, new, nested, accept, invite, create, local},
+  keywordstyle=\color{granate}\bfseries,
+  ndkeywords={class, export, boolean, throw, implements, import, this},
+  ndkeywordstyle=\color{mauve}\bfseries,
+  identifierstyle=\color{black},
+  sensitive=false,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  commentstyle=\color{dkgreen}\ttfamily,
+  stringstyle=\color{dkgreen}\ttfamily,
+  morestring=[b]',
+  morestring=[b]"
+}
+
+\lstdefinelanguage{Pseudocode}{
+  keywords={end, global, protocol, rec, role, choice, at, continue, do, from, to, var, if, in, while, do, else, case, break, calls, new, nested, accept, invite, create, local},
+  % keywordstyle=\color{granate}\bfseries,
+  ndkeywords={def, match, with, for, class, return, export, boolean, throw, implements, import, this},
+  ndkeywordstyle=\color{mauve}\bfseries,
+  identifierstyle=\color{black},
+  sensitive=false,
+  comment=[l]{//},
+  morecomment=[s]{/*}{*/},
+  commentstyle=\color{dkgreen}\ttfamily,
+  stringstyle=\color{dkgreen}\ttfamily,
+  morestring=[b]',
+  morestring=[b]"
+}
