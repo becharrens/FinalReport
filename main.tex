@@ -878,26 +878,60 @@ After extending the syntax for Scribble global protocols we also had to modify t
 % \end{figure}
 
 \begin{figure}[h!]
-    \centering
-    \begin{math}
-        \begin{array}{rcl}
-            \mathit{L} & ::= & \scrlocal\ \protocol\ \mathit{A@pro}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\;T\;\} \\\\
-            % G & ::= & \texttt{end} & \white &
-            \mathit{T} & ::= &\\[2.75pt]
-              &   | & \choice\ \at\ \mathit{A}\ \{T_1\}\ \scror\ ...\ \scror\ \{T_n\} \\[2.75pt]
-              &   | & \scrmessage{a}{S}\ \from\ \mathit{B};\ \mathit{T} \\[2.75pt]
-              &   | & \scrmessage{a}{S}\ \scrto\ \mathit{B};\ \mathit{T} \\[2.75pt]
-              &   | & \rec\ \mathit{t}\ \{\;T\;\} \\[2.75pt]
-              &   | &  \continue\ \mathit{t} \\[2.75pt]
-              &   | & \invite(\roles{A}{n})\ \scrto\ \mathit{pro}\,;\ \mathit{T} \\[2.75pt]
-              &   | & \create(\rolessig{B}{m})\ \scrin\ \mathit{pro}\,;\ \mathit{T}\\[2.75pt]
-              &   | & \accept\ \mathit{C@pro}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ \mathit{A}\,;\ \mathit{T}\\[2.75pt]
-              &   | & \scrend \\[2.75pt]
-        \end{array}
-    \end{math}
+    \begin{center}
+        \begin{tabular}{l}
+            $\mathit{L}\ ::=\ \scrlocal\ \protocol\ \mathit{A@pro}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\;T\;\}$ \\\\
+            \begin{math}
+                \begin{array}{rcl}
+                    \mathit{RecvMsg} & ::= & \\[2.75pt]
+                     & | & \messageFromL{a}{S}{B}\\[2.75pt]
+                     & | & \acceptL{C@pro}{A}{B}{A}\\\\
+        
+                    \mathit{T} & ::= &\\[2.75pt]
+                      &   | & \choice\ \at\ \mathit{A}\ \{T_1\}\ \scror\ ...\ \scror\ \{T_n\} \\[2.75pt]
+                      &   | & \rec\ \mathit{t}\ \{\;T\;\} \\[2.75pt]
+                      &   | &  \continue\ \mathit{t} \\[2.75pt]
+                      &   | & \scrmessage{a}{S}\ \scrto\ \mathit{B};\ \mathit{T} \\[2.75pt]
+                    %   &   | & \scrmessage{a}{S}\ \from\ \mathit{B};\ \mathit{T} \\[2.75pt]
+                      &   | & \mathit{RecvMsg};\ \mathit{T}\\[2.75pt]
+                      &   | & \invite(\roles{A}{n})\ \scrto\ \mathit{pro}\,;\ \mathit{T} \\[2.75pt]
+                      &   | & \create(\rolessig{B}{m})\ \scrin\ \mathit{pro}\,;\ \mathit{T}\\[2.75pt]
+                    %   &   | & \accept\ \mathit{C@pro}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ \mathit{A}\,;\ \mathit{T}\\[2.75pt]
+                    &   | & \scrend \\[2.75pt]
+                \end{array}
+            \end{math}
+        \end{tabular}
+    \end{center}
     \caption{Syntax of Scribble local protocols extended with invitations}
     \label{scr-local-protocols-syntax}
 \end{figure}
+
+% \begin{figure}[h!]
+%     \centering
+%     \begin{math}
+%         \begin{array}{rcl}
+%             \mathit{L} & ::= & \scrlocal\ \protocol\ \mathit{A@pro}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\;T\;\} \\\\
+%             % G & ::= & \texttt{end} & \white &
+            
+%             \mathit{RecvMsg} & ::= & \\[2.75pt]
+%              & | & \messageFromL{a}{S}{B}\\[2.75pt]
+%              & | & \acceptL{C@pro}{A}{B}{A}\\\\
+
+%             \mathit{T} & ::= &\\[2.75pt]
+%               &   | & \choice\ \at\ \mathit{A}\ \{T_1\}\ \scror\ ...\ \scror\ \{T_n\} \\[2.75pt]
+%               &   | & \scrmessage{a}{S}\ \from\ \mathit{B};\ \mathit{T} \\[2.75pt]
+%               &   | & \scrmessage{a}{S}\ \scrto\ \mathit{B};\ \mathit{T} \\[2.75pt]
+%               &   | & \rec\ \mathit{t}\ \{\;T\;\} \\[2.75pt]
+%               &   | &  \continue\ \mathit{t} \\[2.75pt]
+%               &   | & \invite(\roles{A}{n})\ \scrto\ \mathit{pro}\,;\ \mathit{T} \\[2.75pt]
+%               &   | & \create(\rolessig{B}{m})\ \scrin\ \mathit{pro}\,;\ \mathit{T}\\[2.75pt]
+%               &   | & \accept\ \mathit{C@pro}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ \mathit{A}\,;\ \mathit{T}\\[2.75pt]
+%               &   | & \scrend \\[2.75pt]
+%         \end{array}
+%     \end{math}
+%     \caption{Syntax of Scribble local protocols extended with invitations}
+%     \label{scr-local-protocols-syntax}
+% \end{figure}
 
 Our proposed extensions to the syntax of Scribble local protocols are shown in Figure \ref{scr-local-protocols-syntax}, and some examples of local protocols, which correspond to the projections of the protocols in Figure \ref{scribble-nested-global}, are can be seen in Figure \ref{scribble-nested-local}. We have kept all the original Scribble constructs and added three new ones for sending invitations, accepting invitations and for initializing dynamic roles:
 
@@ -1094,9 +1128,9 @@ The projection of the $\calls$ construct is very similar to the projection of th
 
             $R_1 = R_2 \implies \mathtt{IS\_MSG\_FROM}(\,R_2,\ \contG{\callsG{R_1}{P}{A}}{G}\;)$\\[14pt]
 
-            $R_1 = R_2 \implies \mathtt{IS\_RECV\_FROM}(\,R_2,\ \contG{\messageFromL{a}{S}{R_1}}{T}\;)$\\[7pt]
+            $R_1 = R_2 \implies \mathtt{IS\_RECV\_FROM}(\,R_2,\ \messageFromL{a}{S}{R_1}\;)$\\[7pt]
 
-            $R_1 = R_2 \implies \mathtt{IS\_RECV\_FROM}(\,R_2,\ \contG{\acceptL{D@P}{A}{B}{R_1}}{T}\;)$\\[14pt]
+            $R_1 = R_2 \implies \mathtt{IS\_RECV\_FROM}(\,R_2,\ \acceptL{D@P}{A}{B}{R_1}\;)$\\[14pt]
 
             $\mathtt{FIRST\_RECEIVERS}(\,G\,)\ =$\\
 
@@ -1192,15 +1226,41 @@ Moreover, because the sending of invitations is asynchronous and a role can send
 
 We extend the definition of projection for $\choice$ for the case where the projected role is not the role making the choice  or one of the roles receiving the first message. The definition proposed in the nested protocols paper only applied a simple merge over all the branches, where the continuation of the role in each of the branches must be exactly the same. We apply a variation of the full merge presented in the Featherweight Scribble paper\cite{featherweight} instead, modified to take into account both invitations and labeled messages. A definition of the full merge can be seen in Figure \ref{fullmerge}.\\
 
+% \begin{figure}[h]
+
+%     \centering
+
+%     $\mathit{T_1}\ \bigsqcup\ \mathit{T_2}\ =\ \mathit{T_1} \quad \; \mathit{if}\ \mathit{T_1}\ =\ \mathit{T_2}$\\[17pt]
+
+%     $\choice\ \at\ \mathit{B}\ \{\mathtt{RECV\_FROM}(\mathit{B})_i;\ \mathit{T_i}\}_\varinset{i}{I}\ \bigsqcup\ \choice\ \at\ \mathit{B}\ \{\mathtt{RECV\_FROM}(B)_j;\ \mathit{T'_j}\}_\varinset{j}{J}\ =$\\[5pt]
+%     $\choice\ \at\ \mathit{B}\ \{\mathtt{RECV\_FROM}(\mathit{B})_i;\ T_i\}_\varinset{i}{I\;\setminus\;J}\ \bigcup\ \{\mathtt{RECV\_FROM}(\mathit{B})_j;\ \mathit{T'_j}\}_\varinset{j}{J\;\setminus\;I}\ \bigcup$\\
+%      $\{\mathtt{RECV\_FROM}(\mathit{B})_k;\ \mathit{T_k}\ \bigsqcup\ \mathit{T'_k}\}_\varinset{k}{I\;\cap\;J}$\\[17pt]
+
+%     % $\rec\ t\ \{T_1\}\ \bigsqcup\ \rec\ t\ \{T_2\}\ =\ \rec\ t\ \{T_1\ \bigsqcup\ T_2\}$\\[13pt]
+
+%     % $\continue\ t\ \bigsqcup\ \continue\ t\ =\ \continue\ t$\\[13pt]
+
+%     % $\scrend\ \bigsqcup\ \scrend\ =\ \scrend$\\[13pt]
+
+%      $\mathit{T_1}\ \bigsqcup\ \mathit{T_2}$ \ \ \textit{is undefined otherwise}\\[7.5pt]
+
+%     \caption{Definition of the full merge operator}
+%     \label{fullmerge}
+% \end{figure}
+
 \begin{figure}[h]
 
     \centering
 
     $\mathit{T_1}\ \bigsqcup\ \mathit{T_2}\ =\ \mathit{T_1} \quad \; \mathit{if}\ \mathit{T_1}\ =\ \mathit{T_2}$\\[17pt]
 
-    $\choice\ \at\ \mathit{B}\ \{\mathtt{RECV\_FROM}(\mathit{B})_i;\ \mathit{T_i}\}_\varinset{i}{I}\ \bigsqcup\ \choice\ \at\ \mathit{B}\ \{\mathtt{RECV\_FROM}(B)_j;\ \mathit{T'_j}\}_\varinset{j}{J}\ =$\\[5pt]
-    $\choice\ \at\ \mathit{B}\ \{\mathtt{RECV\_FROM}(\mathit{B})_i;\ T_i\}_\varinset{i}{I\;\setminus\;J}\ \bigcup\ \{\mathtt{RECV\_FROM}(\mathit{B})_j;\ \mathit{T'_j}\}_\varinset{j}{J\;\setminus\;I}\ \bigcup$\\
-     $\{\mathtt{RECV\_FROM}(\mathit{B})_k;\ \mathit{T_k}\ \bigsqcup\ \mathit{T'_k}\}_\varinset{k}{I\;\cap\;J}$\\[17pt]
+    $\choice\ \at\ \mathit{B}\ \{\mathit{RecvMsg_i}\;;\ \mathit{T_i}\,\}_\varinset{i}{I}\ \bigsqcup\ \choice\ \at\ \mathit{B}\ \{\mathit{RecvMsg_j}\;;\ \mathit{T'_j}\,\}_\varinset{j}{J}\ =$\\[5pt]
+    $\choice\ \at\ \mathit{B}\ \{\mathit{RecvMsg_i}\;;\ \mathit{T_i}\,\}_\varinset{i}{I\;\setminus\;J}\ \bigcup\ \{\mathit{RecvMsg_j}\;;\ \mathit{T'_j}\,\}_\varinset{j}{J\;\setminus\;I}\ \bigcup$\\
+     $\{\mathit{RecvMsg_k}\;;\ \mathit{T_k}\ \bigsqcup\ \mathit{T'_k}\,\}_\varinset{k}{I\;\cap\;J}$\\[7.5pt]
+
+    %  \textit{if} $\forall \varinset{i}{I}.\mathtt{IS\_RECV\_FROM}(\,B,\; \textit{RecvMsg_i}\,)\ \mathit{and}\ \forall \varinset{j}{J}.\mathtt{IS\_RECV\_FROM}(\,B,\; \mathit{RecvMsg_j}\,)$\\[17pt]
+
+    $\mathit{if}\ \forall \varinset{k}{I\;\cup\;J}.\;\mathtt{IS\_RECV\_FROM}(\mathit{B},\ \mathit{RecvMsg_k\,})$\\[14pt]
 
     % $\rec\ t\ \{T_1\}\ \bigsqcup\ \rec\ t\ \{T_2\}\ =\ \rec\ t\ \{T_1\ \bigsqcup\ T_2\}$\\[13pt]
 
@@ -1214,7 +1274,9 @@ We extend the definition of projection for $\choice$ for the case where the proj
     \label{fullmerge}
 \end{figure}
 
-Two local types can always be merged if they are the same type. Two $\choice$ constructs can be merged if the same role is making the choice, and the first interaction in every branch is the receiving of a different message (invitation or labeled message) from that role. The merged type is a $\choice$ which combines the branches from both types. The branches which do not overlap between the two $\choice$ constructs can remain the same, but the branches where the first received message is common to both of them must be recursively merged to produce a new type. To reduce the number of cases to consider in the definition of the merge operator we implicitly use the equivalence between a $\choice$ with a single branch and the interactions of that branch without the $\choice$: $\choice\ \at\ R\ \{T\}\ \equiv\ T$.\\
+Two local types can always be merged if they are the same type. Two $\choice$ constructs can be merged if the same role is making the choice, and the first interaction in every branch is the receiving of a different message (invitation or labeled message) from that role. We express this by ensuring that the local type of each branch starts with a \textit{RecvMsg} (defined in Section \ref{scr-local-protocols-syntax}), which can either be the receiving of a labeled message or an $\accept$ construct. Moreover, we enforce that the sender of the first message in all branches must be the role making the choice by requiring that the local type of every branch satisfies the predicate \texttt{IS\_RECV\_FROM}($\mathit{B}$, $\mathit{RecvMsg_k}$), where $\mathit{RecvMsg_k}$ is the first interaction in each branch. We define two rules to derive this predicate in Figure \ref{scribble-choice-aux-predicates}, where the predicate can only be derived if the role passed in as a parameter is the one sending the message in the local type.\\
+
+The resulting merged type in this case is a $\choice$ which combines the branches from both types. The branches which do not overlap between the two $\choice$ constructs can remain the same, but the branches where the first received message is common to both of them must be recursively merged to produce a new type. To reduce the number of cases to consider in the definition of the merge operator we implicitly use the equivalence between a $\choice$ with a single branch and the interactions of that branch without the $\choice$: $\choice\ \at\ R\ \{T\}\ \equiv\ T$.\\
  
 % TODO: Find a better name
 \chapter{Code Generation}
