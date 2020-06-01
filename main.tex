@@ -641,9 +641,6 @@ The definition of nested protocols presented in the nested protocols paper\cite{
 
 We introduce a precise definition for the scope of protocols, which the original paper did not handle explicitly. Through the use of scopes, the users can encapsulate different behaviours as nested protocols which can only be used inside a protocol, and these scope restrictions will be verified by the framework.\\
 
-% When moving this, I need to ensure that I define what a valid protocol call is before it is refered to in other places.
-The well-formedness property for protocols still remains the same as before \cite{nestedprotocols}\cite{featherweight}. We say a protocol is well-formed if it is projectable and all protocol calls are valid. A protocol is projectable if the projection is defined for all the participants of that protocol. We incorporate the merging operator into the projection, which the original paper did not, extending the definition with the cases for invitations. A protocol call is valid if the protocol called is in scope, it is called with the correct number of roles and all the roles involved are distinct and in scope (participating in the current protocol).
-
 \subsection{Global Protocols}\label{scr-global-protocols}
 
 We have extended the definition of a Scribble module, which we described in Section \ref{Scribble}, with nested protocols. Previously, a module was a collection of global protocols, but now it can also contain zero or more top-level nested protocols. However, it must still contain at least one global protocol (with no dynamic roles), which can be used as the entry point for the computation. Like in the original paper\cite{nestedprotocols}, nested protocols can also be defined inside both nested and global protocols.\\
@@ -741,111 +738,8 @@ The main restriction we have applied is that within any given scope, there must 
 
 The distinction between the $\scrdo$ and $\calls$ constructs for calling global and nested protocols makes it possible to unambiguously define a nested protocol and a global protocol with the same name without one definition shadowing the other. However, in this case the user must be careful when calling the protocol, especially if they have signatures with the same number of non-dynamic participants, as it can be easy to confuse which protocol call was intended. If the signatures are different this should be less of a problem, as trying to call a protocol with the wrong number of participants will produce an error.\\
 
-As we mentioned in Section \ref{scr-global-protocols}, defining a nested protocol with the same name as a nested protocol in an outer scope will override the definition in the current scope and any inner scopes. Global protocol definitions cannot be shadowed, as they can only be defined within the top-level scope. When ensuring that protocols are well-formed, it is important to keep track of the protocols which are currently in scope and their signatures in order to ensure that all the protocol calls are valid. 
+As we mentioned in Section \ref{scr-global-protocols}, defining a nested protocol with the same name as a nested protocol in an outer scope will override the definition in the current scope and any inner scopes. Global protocol definitions cannot be shadowed, as they can only be defined within the top-level scope. When checking that protocol calls are valid it is is important to keep track of the protocols which are currently in scope and their signatures to ensure that the call matches the number of roles in the protocol's signature. 
 
-\subsection{Renaming Protocols}\label{renaming}
-
-After ensuring that none of the protocol violates the scope restrictions and that all protocol calls are valid, it is possible to "flatten" the representation of the protocols. In order to do this, all name clashes between different protocol must be resolved by renaming protocols so that all protocol names are unique. Moreover, if we make every protocol name unique, then we can remove the distinction between global and nested protocols and treat protocol calls to both global and nested protocols uniformly, as there can be no ambiguity with regards to which protocol is going to be called.\\
-
-The result of this renaming process is a set of protocols which do not contain any nested protocols within, where both global and nested protocols have been converted into this intermediate representation. We define a slightly different syntax for this representation, as shown in Figure \ref{protocols-after-renaming}, which is essentially the same as a nested protocol declaration without any nested protocols inside.\\
-
-\begin{figure}[h!]
-    \centering
-    $\protocol\ P(\role\ A_1,\ ...,\ \role\ A_n;\ \scrnew\ \role\ B_1,\ ...,\ \role\ B_m)\ \{\;G\;\}$\\
-    \caption{Intermediate representation of protocols after renaming}
-    \label{protocols-after-renaming}
-\end{figure}
-
-
-We present a renaming algorithm which uses two environments. The first one maps the original protocol names that were accessible in the current scope to the unique names of the protocols they refer to, while the second environment holds the set of all the unique protocol names which have been generated. The scope environment can be used to update the protocol calls in the interactions of a protocol, and the protocol name environment is necessary to generate globally unique protocol names. We define the algorithm in pseudocode in Figures \ref{renaming-interactions} and \ref{renaming-module}.\\
-
-The first step in the algorithm is to aggregate the information from the protocol declarations in the top-level scope into both environments. When resolving clashes between top-level nested and global protocols we decided to always change the nested protocol names and keep the global protocol names without changing them. This approach allows us to only keep a single environment for the nested protocols which are in the current scope, as global protocol names will not change, so there is no need to track them in a separate environment. We add the unique names of both the top-level global and nested protocols to the protocol name environment, and store a mapping from the nested protocol names to their new unique names in the scope environment. As well as updating the environments, we also change the protocol names in the nested protocol declarations. This process can be seen in lines 15-25 of the \texttt{rename\_module} function in Figure \ref{renaming-module}.\\
-
-Once we have all the information about the top-level scope, we can proceed to recursively rename the interactions of all the protocols, aggregating all the resulting protocols in a single set. In order to update the interactions of a protocol, we must first update both the scope and protocol name environments with the nested protocol declarations inside the current protocol. The procedure for how this can be done is shown in the function \texttt{rename\_nested\_protocols} in Figure \ref{renaming-interactions}. We first generate a new unique name for each of the protocols and add it to the protocol name environment. The scope environment is updated by creating/modifying the mapping for the protocol's old name so that it refers to the new name. We also update the declarations of the nested protocols with their new unique names here. Once both environments have been updated, we recursively rename the interactions of each of the nested protocols and store them in the result set. Finally, we update the protocol names in the current protocol's interactions using the scope environment and add the protocol with its new interactions to the result set.\\
- 
-The procedure we have just described is implemented in the \texttt{\seqsplit{rename\_and\_flatten\_protocols}} function in Figure \ref{renaming-module}. We need to return the updated protocol name environment as well as the set of renamed protocols to ensure that the protocol names we generate are unique. Otherwise, clashes could occur between protocols defined inside different nested protocols. However, the scope environment does not contain any useful information outside the current scope, so it can be ignored once the protocol interactions' have been updated. \\
-
-Renaming a protocol's interactions simply requires recursively traversing the global type, as shown in the \texttt{rename\_protocol\_calls} function in Figure \ref{renaming-interactions}. The only interactions which change are the global protocol calls and nested protocol calls. In order to treat both types of calls in the same way, global protocol calls are converted explicitly to the $\calls$ construct with the first participant initiating the call. As global protocol names were not changed, the protocol name in the call remains the same. On the other hand, updating nested protocol calls requires looking up the unique protocol name corresponding to the protocol being called in the scope environment and building a new $\calls$ construct with it.\\
-
-\begin{figure}[h!]
-    \centering
-    \lstset{language=Pseudocode}
-    \begin{lstlisting}[escapeinside={(*}{*)}]
-    def rename_protocol_calls(G, ScopeEnv):
-        match G with:
-            | A calls P((*$\roles{A}{n}$*)); (*$\mathtt{G_1}$*) ->
-                newP = ScopeEnv[P]
-                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
-                return A calls newP((*$\roles{A}{n}$*)); (*new$\mathtt{G_1}$*)
-            | do P((*$\roles{A}{n}$*)); (*$\mathtt{G_1}$*) -> 
-                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
-                return (*$\mathtt{A_1}$*) calls P((*$\roles{A}{n}$*)); (*new$\mathtt{G_1}$*)
-            | choice at A (*$\mathtt{\{\;G_i\,\}_\varinset{i}{I}}$*) ->
-                return choice at A (*$\mathtt{\{\;\;rename\_protocol\_calls(G_i,\ ScopeEnv)\;\;\}_\varinset{i}{I}}$*)
-            | rec t (*$\mathtt{\{\;G_1\,\}}$*) -> 
-                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
-                return rec t (*$\mathtt{\{\;newG_1\,\}}$*)
-            | a(S) from A to B; (*$\mathtt{G_1}$*) ->
-                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
-                return a(S) from A to B; (*new$\mathtt{G_1}$*)
-            | continue t ->
-                return continue t
-            | end ->
-                return end
-        
-    def rename_nested_protocols(nested_protocols, ScopeEnv, ProtocolNames):
-        renamed_protocols = (*$\emptyset$*)
-        for (nested protocol P((*$\rolessig{A}{n}$*); (*$\scrnew\ \rolessig{B}{m}$*)) {nested_protos; G}) in nested_protocols:
-            newP = UNIQUE_NAME(P, ProtocolNames)
-            ScopeEnv = ScopeEnv[P -> newP]
-            ProtocolNames = ProtocolNames (*$\bigcup$*) {newP}
-            renamed_protocols = renamed_protocols (*$\bigcup$*) {(*$\;$*)nested protocol newP((*$\rolessig{A}{n}$*); (*$\scrnew\ \rolessig{B}{m}$*)) {nested_protos; G}(*$\;$*)}
-        return (renamed_protocols, ScopeEnv, ProtocolNames)
-    \end{lstlisting}
-    \caption{Algorithm for renaming protocol interactions}
-    \label{renaming-interactions}
-\end{figure}
-\clearpage
-
-\begin{figure}[h!]
-    \centering
-    \lstset{language=Pseudocode}
-    \begin{lstlisting}[escapeinside={(*}{*)}]
-    def rename_and_flatten_protocols(nestedProtocol, ScopeEnv, ProtocolNames, AllProtocols):
-        match nestedProtocol with:
-          | nested protocol P((*$\rolessig{A}{n}$*); new (*$\rolessig{B}{m}$*)) {nested_protocols; G} ->
-            (ScopeEnv, ProtocolNames, nestedProtocols) = 
-                rename_nested_protocols(nestedProtocols, ScopeEnv, ProtocolNames)
-            for nestedProtocol in nestedProtocols:
-              ProtocolNames, AllProtocols = 
-                  rename_and_flatten_protocols(nestedProtocol, ScopeEnv, ProtocolNames, AllProtocols)
-
-            newG = rename_protocol_calls(G, ScopeEnv)
-            AllProtocols = AllProtocols (*$\bigcup$*) {(*$\;$*)protocol P((*$\rolessig{A}{n}$*); new (*$\rolessig{B}{m}$*)) {(*$\;$*)newG(*$\;$*)}(*$\;$*)}
-            return ProtocolNames, AllProtocols
-      
-    def rename_module(nested_protocols, global_protocols):
-        ProtocolNames = (*$\emptyset$*)
-        ScopeEnv = {}
-        TopLevelProtocols = (*$\emptyset$*)
-        AllProtocols = (*$\emptyset$*)
-        for (global protocol P((*$\rolessig{A}{n}$*)) {nested_protos; G}) in global_protocols:
-          ProtocolNames = ProtocolNames (*$\bigcup$*) P
-          TopLevelProtocols = TopLevelProtocols (*$\bigcup$*) {nested protocol P((*$\rolessig{A}{n}$*); (*$\emptyset$*)) {nested_protos; G}}
-
-        renamed_nested_protocols, ScopeEnv, ProtocolNames = 
-              rename_nested_protocols(nested_protocols, ScopeEnv, ProtocolNames)
-        TopLevelProtocols = TopLevelProtocols (*$\bigcup$*) renamed_nested_protocols
-        for top_level_protocol in TopLevelProtocols:
-            ProtocolNames, AllProtocols = rename_and_flatten_protocols(top_level_protocol, SetupEnv, ProtocolNames, AllProtocols)
-
-        return AllProtocols
-
-    \end{lstlisting}
-    \caption{Algorithm for renaming protocols in a Scribble module}
-    \label{renaming-module}
-\end{figure}
-\clearpage
 \subsection{Local Protocols}
 
 After extending the syntax for Scribble global protocols we also had to modify the definition of projection of Scribble global types presented in \cite{featherweight} to include these new constructs, which we describe in Section \ref{scribble-projection}. We therefore extend the syntax of Scribble local types with constructs for sending and receiving invitations following the session types presented in \cite{nestedprotocols}. \\
@@ -972,8 +866,122 @@ Our proposed extensions to the syntax of Scribble local protocols are shown in F
     \label{scribble-nested-local}
 \end{figure}{}
 
+\section{Well-formedness}
+% When moving this, I need to ensure that I define what a valid protocol call is before it is refered to in other places.
+In order to be able to generate the implementation of a protocol specified by the user, the Scribble framework must first verify that the protocol is well-formed.\\ Both the Featherweight Scribble \cite{featherweight} and the Nested Protocols\cite{nestedprotocols} papers share a similar definition for this property: in order for a protocol to be well-formed a protocol it must be projectable and all protocol calls must be valid. A protocol is projectable if the projection is defined for all the participants of that protocol, and a protocol call is valid if the called protocol is defined/in scope, it is called with the correct number of roles and all the roles involved are distinct and in scope (participating in the current protocol).\\
+
+Despite our extensions to the Scribble framework, the well-formedness property remains the same. However, we highlight the importance of ensuring that protocol calls are valid after introducing nested scopes and the ability to shadow protocol declarations, allowing users to declare protocols with the same name and different declarations in different scopes. We also extend the definition of projection given in the original Nested Protocols paper\cite{nestedprotocols} by incorporating the full merge operator, which the original paper did not. In order to do this, we extend the definition of the merge operator defined in the Featherweight Scribble paper\cite{featherweight}.
+
+% The well-formedness property for protocols still remains the same as before \cite{nestedprotocols}\cite{featherweight}. We say a protocol is well-formed if it is projectable and all protocol calls are valid. A protocol is projectable if the projection is defined for all the participants of that protocol. We incorporate the merging operator into the projection, which the original paper did not, extending the definition with the cases for invitations. A protocol call is valid if the protocol called is in scope, it is called with the correct number of roles and all the roles involved are distinct and in scope (participating in the current protocol).
+
+\section{Renaming Protocols}\label{renaming}
+
+The representation of Scribble nested protocols we have defined in Section \ref{scr-global-protocols} is very similar to the representation of nested protocols given in the original paper\cite{nestedprotocols}. However, the distinction between global and nested protocols and protocol calls in Scribble makes it slightly more complicated and verbose to define the projection of protocols, and name clashes between protocols in different scopes will need to be resolved at some point before code generation to be able to generate a correct implementation of the protocols.\\
+
+In order to simplify the process, we propose introducing an extra preprocessing step on the protocols before projecting them, once the global and nested protocols have been validated to ensure they are syntactically correct and that all protocol calls are valid. The objective in this step is to generate a simpler, flattened representation of the Scribble module, where all the protocols are stored in a single set. In order to achieve this, name clashes need to be resolved to ensure that all protocol names are unique, and all references to the protocols in protocol calls must be renamed to the new unique names. Ensuring that all protocol names are globally unique has the added advantage of allowing us to remove the distinction between nested and global protocols and treat protocol calls to both global and nested protocols uniformly, as there can be no ambiguity with regards to which protocol is going to be called.\\
+
+The result of this renaming process is a set of protocols which do not contain any nested protocols within, where both global and nested protocols have been converted into this intermediate representation. We define a slightly different syntax for this representation, as shown in Figure \ref{protocols-after-renaming}, which is essentially the same as a nested protocol declaration without any nested protocols inside.\\
+
+\begin{figure}[h!]
+    \centering
+    $\protocol\ P(\role\ A_1,\ ...,\ \role\ A_n;\ \scrnew\ \role\ B_1,\ ...,\ \role\ B_m)\ \{\;G\;\}$\\
+    \caption{Intermediate representation of protocols after renaming}
+    \label{protocols-after-renaming}
+\end{figure}
+
+We present a renaming algorithm which uses two environments. The first one maps the original protocol names that were accessible in the current scope to the unique names of the protocols they refer to, while the second environment holds the set of all the unique protocol names which have been generated. The scope environment can be used to update the protocol calls in the interactions of a protocol, and the protocol name environment is necessary to generate globally unique protocol names. We define the algorithm in pseudocode in Figures \ref{renaming-interactions} and \ref{renaming-module}.\\
+
+The first step in the algorithm is to aggregate the information from the protocol declarations in the top-level scope into both environments. When resolving clashes between top-level nested and global protocols we decided to always change the nested protocol names and keep the global protocol names without changing them. This approach allows us to only keep a single environment for the nested protocols which are in the current scope, as global protocol names will not change, so there is no need to track them in a separate environment. We add the unique names of both the top-level global and nested protocols to the protocol name environment, and store a mapping from the nested protocol names to their new unique names in the scope environment. As well as updating the environments, we also change the protocol names in the nested protocol declarations. This process can be seen in lines 15-25 of the \texttt{rename\_module} function in Figure \ref{renaming-module}.\\
+
+Once we have all the information about the top-level scope, we can proceed to recursively rename the interactions of all the protocols, aggregating all the resulting protocols in a single set. In order to update the interactions of a protocol, we must first update both the scope and protocol name environments with the nested protocol declarations inside the current protocol. The procedure for how this can be done is shown in the function \texttt{rename\_nested\_protocols} in Figure \ref{renaming-interactions}. We first generate a new unique name for each of the protocols and add it to the protocol name environment. The scope environment is updated by creating/modifying the mapping for the protocol's old name so that it refers to the new name. We also update the declarations of the nested protocols with their new unique names here. Once both environments have been updated, we recursively rename the interactions of each of the nested protocols and store them in the result set. Finally, we update the protocol names in the current protocol's interactions using the scope environment and add the protocol with its new interactions to the result set.\\
+ 
+The procedure we have just described is implemented in the \texttt{\seqsplit{rename\_and\_flatten\_protocols}} function in Figure \ref{renaming-module}. We need to return the updated protocol name environment as well as the set of renamed protocols to ensure that the protocol names we generate are unique. Otherwise, clashes could occur between protocols defined inside different nested protocols. However, the scope environment does not contain any useful information outside the current scope, so it can be ignored once the protocol interactions' have been updated. \\
+
+Renaming a protocol's interactions simply requires recursively traversing the global type, as shown in the \texttt{rename\_protocol\_calls} function in Figure \ref{renaming-interactions}. The only interactions which change are the global protocol calls and nested protocol calls. In order to treat both types of calls in the same way, global protocol calls are converted explicitly to the $\calls$ construct with the first participant initiating the call. As global protocol names were not changed, the protocol name in the call remains the same. On the other hand, updating nested protocol calls requires looking up the unique protocol name corresponding to the protocol being called in the scope environment and building a new $\calls$ construct with it.\\
+
+\begin{figure}[h!]
+    \centering
+    \lstset{language=Pseudocode}
+    \begin{lstlisting}[escapeinside={(*}{*)}]
+    def rename_protocol_calls(G, ScopeEnv):
+        match G with:
+            | A calls P((*$\roles{A}{n}$*)); (*$\mathtt{G_1}$*) ->
+                newP = ScopeEnv[P]
+                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
+                return A calls newP((*$\roles{A}{n}$*)); (*new$\mathtt{G_1}$*)
+            | do P((*$\roles{A}{n}$*)); (*$\mathtt{G_1}$*) -> 
+                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
+                return (*$\mathtt{A_1}$*) calls P((*$\roles{A}{n}$*)); (*new$\mathtt{G_1}$*)
+            | choice at A (*$\mathtt{\{\;G_i\,\}_\varinset{i}{I}}$*) ->
+                return choice at A (*$\mathtt{\{\;\;rename\_protocol\_calls(G_i,\ ScopeEnv)\;\;\}_\varinset{i}{I}}$*)
+            | rec t (*$\mathtt{\{\;G_1\,\}}$*) -> 
+                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
+                return rec t (*$\mathtt{\{\;newG_1\,\}}$*)
+            | a(S) from A to B; (*$\mathtt{G_1}$*) ->
+                (*new$\mathtt{G_1}$*) = rename_protocol_calls((*$\mathtt{G_1}$*), ScopeEnv)
+                return a(S) from A to B; (*new$\mathtt{G_1}$*)
+            | continue t ->
+                return continue t
+            | end ->
+                return end
+        
+    def rename_nested_protocols(nested_protocols, ScopeEnv, ProtocolNames):
+        renamed_protocols = (*$\emptyset$*)
+        for (nested protocol P((*$\rolessig{A}{n}$*); (*$\scrnew\ \rolessig{B}{m}$*)) {nested_protos; G}) in nested_protocols:
+            newP = UNIQUE_NAME(P, ProtocolNames)
+            ScopeEnv = ScopeEnv[P -> newP]
+            ProtocolNames = ProtocolNames (*$\bigcup$*) {newP}
+            renamed_protocols = renamed_protocols (*$\bigcup$*) {(*$\;$*)nested protocol newP((*$\rolessig{A}{n}$*); (*$\scrnew\ \rolessig{B}{m}$*)) {nested_protos; G}(*$\;$*)}
+        return (renamed_protocols, ScopeEnv, ProtocolNames)
+    \end{lstlisting}
+    \caption{Algorithm for renaming protocol interactions}
+    \label{renaming-interactions}
+\end{figure}
+\clearpage
+
+\begin{figure}[h!]
+    \centering
+    \lstset{language=Pseudocode}
+    \begin{lstlisting}[escapeinside={(*}{*)}]
+    def rename_and_flatten_protocols(nestedProtocol, ScopeEnv, ProtocolNames, AllProtocols):
+        match nestedProtocol with:
+          | nested protocol P((*$\rolessig{A}{n}$*); new (*$\rolessig{B}{m}$*)) {nested_protocols; G} ->
+            (ScopeEnv, ProtocolNames, nestedProtocols) = 
+                rename_nested_protocols(nestedProtocols, ScopeEnv, ProtocolNames)
+            for nestedProtocol in nestedProtocols:
+              ProtocolNames, AllProtocols = 
+                  rename_and_flatten_protocols(nestedProtocol, ScopeEnv, ProtocolNames, AllProtocols)
+
+            newG = rename_protocol_calls(G, ScopeEnv)
+            AllProtocols = AllProtocols (*$\bigcup$*) {(*$\;$*)protocol P((*$\rolessig{A}{n}$*); new (*$\rolessig{B}{m}$*)) {(*$\;$*)newG(*$\;$*)}(*$\;$*)}
+            return ProtocolNames, AllProtocols
+      
+    def rename_module(nested_protocols, global_protocols):
+        ProtocolNames = (*$\emptyset$*)
+        ScopeEnv = {}
+        TopLevelProtocols = (*$\emptyset$*)
+        AllProtocols = (*$\emptyset$*)
+        for (global protocol P((*$\rolessig{A}{n}$*)) {nested_protos; G}) in global_protocols:
+          ProtocolNames = ProtocolNames (*$\bigcup$*) P
+          TopLevelProtocols = TopLevelProtocols (*$\bigcup$*) {nested protocol P((*$\rolessig{A}{n}$*); (*$\emptyset$*)) {nested_protos; G}}
+
+        renamed_nested_protocols, ScopeEnv, ProtocolNames = 
+              rename_nested_protocols(nested_protocols, ScopeEnv, ProtocolNames)
+        TopLevelProtocols = TopLevelProtocols (*$\bigcup$*) renamed_nested_protocols
+        for top_level_protocol in TopLevelProtocols:
+            ProtocolNames, AllProtocols = rename_and_flatten_protocols(top_level_protocol, SetupEnv, ProtocolNames, AllProtocols)
+
+        return AllProtocols
+
+    \end{lstlisting}
+    \caption{Algorithm for renaming protocols in a Scribble module}
+    \label{renaming-module}
+\end{figure}
+\clearpage
+
+
 \section{Projection}\label{scribble-projection}
-As in the original paper, projecting a global or nested protocol requires having an environment which keeps track of all the protocols which are in scope. Our definition of projection is defined on the flattened representation of the Scribble module. This representation is generated by the renaming process described in Section \ref{renaming-interactions}, where the protocols are stored in one large set and the distinction between global and nested protocols has been removed. Moreover, in order to successfully rename all the protocols the original Scribble module must have been validated to ensure all protocol calls are valid. From this flattened representation, building the projection environment is a trivial process, where the protocol declarations in the set can be aggregated to create a mapping from protocol names to their role signatures ($P \mapsto \{\roles{A}{n};\ \roles{B}{m}\}$).\\
+As in the original paper, projecting a global or nested protocol requires having an environment which keeps track of all the protocols which are in scope. Our definition of projection is defined on the flattened representation of the Scribble module we described in Section \ref{renaming}, where all the protocols are stored in one large set and the distinction between global and nested protocols has been removed. Moreover, in order to successfully rename all the protocols the original Scribble module must have been checked to ensure all protocol calls are valid. From this flattened representation, building the projection environment is a trivial process, where the protocol declarations in the set can be aggregated to create a mapping from protocol names to their role signatures ($P \mapsto \{\roles{A}{n};\ \roles{B}{m}\}$).\\
 
 It is not a problem to store the signatures of all the protocols in the environment, because in the validation step and the renaming process we will have already verified that the scope restriction is not violated, so the protocols will only ever need to look up protocols which are defined in their scope in the projection environment. The definition of projection is undefined for protocol calls to protocols which are not in the environment, but this case should never arise if the protocols have passed the previous validation steps we have described.
 
