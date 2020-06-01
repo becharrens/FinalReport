@@ -302,7 +302,7 @@ A key concept in binary session types is duality. When two processes are compose
 
 
 
-\subsection{Multiparty Session Types}
+\subsection{Multiparty Session Types}\label{multiparty-session-types}
 Binary session types have limited applications to real-world problems, as standard protocols tend to be much more complex and involve more than two participants. These interactions cannot always be correctly expressed as the composition of binary sessions between different pairs of participants. \\
 
 Multiparty session types\cite{asyncmpst2} extend the theory by allowing protocols to have multiple participants, thus overcoming these limitations. The main idea is to introduce global types, which describe the multiparty interactions within a protocol from a global perspective, as well as deriving a specification of the behaviour of each participant as local session type through the projection operation. \\
@@ -413,13 +413,37 @@ In binary session types, ensuring that both participants implemented session typ
 \end{itemize}{}
 
 \subsection{Scribble API Endpoint Generation}\label{Scribble}
-Scribble\cite{scribble,featherweight} is a protocol description language based on multiparty session types. The Scribble framework translates this formal definition of the protocol into an implementation in one of various programming languages, thus allowing the theory of MPST to be used in a practical setting. A protocol describes the structure of the message exchanges between different roles, the entities which will participate in the protocol. The type signature of the messages specify both the kind of label that will be sent as well as the type of the payload.\\
+Scribble\cite{scribble,featherweight} is a protocol description language based on multiparty session types. The Scribble framework translates this formal definition of the protocol into an implementation in one of various programming languages, thus allowing the theory of MPST to be used in a practical setting. A protocol describes the structure of the message exchanges between different roles, the entities which will participate in the protocol.\\
 
-The first step that Scribble does is verifying that the protocol is well-formed, which means that local protocols can be generated for all the roles. Syntactically correct protocols can be ambiguous, for instance, if two choices of a branch expect messages with the same signature to be sent. The local protocols are derived by projecting the global type onto each of the roles. A communication finite state machine (CFSM) is then generated for each of the local protocols, which expresses the valid transitions between states that a role can carry out during the protocol. These transitions represent a message exchange with a different participant.\\
+We present the syntax of the Scribble language as defined in the Featherweight Scribble paper\cite{featherweight} in Figure \ref{scribble-global-protocol}. A Scribble module can contain multiple protocols, with one of them being the designated point of entry for the computation. Protocols can call each other through the $\scrdo$ construct, but this essentially corresponds to inlining the called protocol. In order for a protocol call to be valid, it must be called with number of roles specified in its declaration. The remaining syntactic constructs relate very closely to the different session types in the theory, described in Section \ref{multiparty-session-types}. A message exchange is specified by the label of the message and the type of its payload, \texttt{S}, and the sender and receiver roles. Although here we only specify one payload type there could potentially be zero or more multiple ones. The $\choice$ construct encodes the external choice by a role, with a set of the different continuations which can happen based on the role's choice. The recursive type and type variables are directly encoded by the $\rec$ and $\continue\ t$ constructs, and the \texttt{end} session type is represented with the $\scrend$ construct.\\
+
+
+
+\begin{figure}[!h]
+    \centering
+    \begin{math}
+        \begin{array}{rcl}
+            \mathit{Module} & ::= & \mathit{P}+\\\\
+            \mathit{P} & ::= & \scrglobal\ \protocol\ \mathit{pro}(\rolessig{A}{n})\ \{\;\mathit{G}\;\} \\\\
+            % G & ::= & \texttt{end} & \white &
+            \mathit{G} & ::= &\\[2.75pt]
+              &   | & \choice\ \at\ \mathit{A}\ \{\;\mathit{G_1}\;\}\ \scror\ ...\ \scror\ \{\;\mathit{G_n}\;\} \\[2.75pt]
+              &   | & \scrmessage{a}{S}\ \from\ \mathit{A}\ \scrto\ \mathit{B};\ \mathit{G} \\[2.75pt]
+              &   | & \rec\ \mathit{t}\ \{\;G\;\} \\[2.75pt]
+              &   | &  \continue\ \mathit{t} \\[2.75pt]
+              &   | & \scrdo\ \mathit{pro}(\roles{A}{n});\ \mathit{G} \\[2.75pt]
+              &   | & \scrend \\[2.75pt]
+        \end{array}
+    \end{math}
+    \caption{Syntax of Scribble global protocols}
+    \label{scribble-global-protocol}
+\end{figure}
+
+A syntactically correct protocol where all the protocol calls are valid can be expanded with the interactions of the called protocols to produce a single large protocol with all the interactions which must be performed. Scribble the verifies that the protocol is well-formed, which means that local protocols can be generated for all the roles. Syntactically correct protocols can be ambiguous, for instance, if the first message in two branches of a $\choice$ have the same signature, as other roles would not be able to tell which branch has been chosen. The local protocols are derived by projecting the global type onto each of the roles. A communication finite state machine (CFSM) is then generated for each of the local protocols, which expresses the valid transitions between states that a role can carry out during the protocol. These transitions represent a message exchange with a different participant.\\
 
 An example of a global protocol can be seen in Figure \ref{scribble_protocol}, which shows a calculator protocol carried out by two roles: a client who enters the operands and the server who carries out the operation. The protocol has a recursive loop in which the client can choose to either send two numbers to multiply to the server, get the result back and start over again or quit the protocol. The resulting CFSM for the server $S$ can be seen in Figure \ref{scribble_fsm}.\\
 
-\begin{figure}
+\begin{figure}[h]
     \centering
     \lstset{language=Scribble}
     \begin{lstlisting}
@@ -509,7 +533,7 @@ Figure \ref{nested_session_calculus} shows the session calculus presented in the
     \item $\texttt{new}\ s\ \texttt{on}\ k\ \texttt{with}\ (\widetilde{v})\&(\widetilde{a}\ \texttt{as}\ \widetilde{r}).P$ is the operation for calling a subprotocol. Creates a new subsession $s$ within the parent session $k$, passing in arguments $\widetilde{v}$ and using shared channels $\widetilde{a}$ to send the external invitations.
 \end{itemize}
 
-\subsection{Session Types}
+\subsection{Session Types}\label{nested-session-types}
 The paper also extends the syntax of session types to include the types for defining and calling subprotocols as well as sending and receiving invitations. The extended syntax for local and global types is shown in Figure \ref{nested_session_types}. They define kinds (types for types), including $\diamond$, which represents the protocol type, in order to formalize the definition of protocols. The definition of global types is essentially the same as before:
 \begin{itemize}
     \item Termination, branching and recursion are almost the same as before. They also define the type for parallel composition.
@@ -601,54 +625,84 @@ Nevertheless, the current theory will suffice in most scenarios, as the kinds of
 
 \chapter{Extending Scribble with Nested Protocols}
 % TODO: Verify this after extending Scribble background
-In this chapter we present a version of the Scribble protocol language as presented in \cite{scribble}, extended with constructs in order to be able to encode nested protocols. We describe the validation process for nested protocols and define the projection of Scribble global protocols for the new constructs we introduce.
+In this chapter we present a version of the Scribble protocol language as presented in \cite{scribble}. We extend the syntax of both global and local types with contructs for representing nested protocols similar to the ones described the in the original paper\cite{nestedprotocols}. We introduce a precise definition of a protocol's scope - the protocols which are able to call a protocol, and extend the definition of well-formedness to take our syntax extensions into account. Finally, we extend the projection of Scribble global protocols with the new constructs we introduce.
 
 % TODO: Move to next chapter
 % The code generation approach is different from the one previously discussed, as the code is generated directly from the session types. We describe the Scribble language extensions and the code generation approach to produce Golang APIs.
 
 \section{Syntax Extensions}\label{scribble-extensions}
 
-The Scribble syntax already has most of the constructs to encode the session types described in the nested sessions paper\cite{nestedprotocols}, but some of them are missing, like the internal choice session type. We have decided to focus on implementing functionality related to nested protocols, so we will not support internal choice. However, this should not be a great limitation, as the external $\choice$ construct will suffice for most use cases.
+% Scribble already allows defining multiple protocols in one module and protocols calling each other. However, in order to represent nested protocols, we need to extend Scribble with the ability to define protocols inside other protocols. Moreover, in the current implementation, protocol calls essentially correspond to inlining the interactions of the called protocol, but, as described in Section \ref{nested-session-types}, nested protocol calls involve inviting participating roles, external participants into the subsession and accepting the invitations before carrying out the interactions of the called protocol. Therefore, we will extend the Scribble syntax with suitable constructs for these operations and incorporate the semantics of nested protocol calls into the framework.\\
+
+In Section \ref{Scribble} we described how the Scribble syntax already has most of the constructs needed to encode session types, including constructs for encoding labeled message exchanges, recursion and external choice. However, the session types pesented in the nested sessions paper\cite{nestedprotocols}, which we describe in Section \ref{nested-session-types}, also include some constructs which are not currently implemented in Scribble, like the internal choice session type. We have decided to focus on implementing the main functionality related to nested protocols, such as allowing the declaration of protocols inside other protocols and introducing the use of invitations in order to participate in a nested protocol call, rather than extending Scribble with other non-essential constructs. We will therefore not support internal choice, but this should not be a great limitation, as the external choice construct will suffice for most use cases.
 \\
 
-We also do not support the ability to send values when calling a nested protocol explicitly. However, in the protocol implementation we will provide a means for the user to pass in values to subsessions by initialising the state of the different roles which will participate in the nested protocol, so this omission should not have a great impact in practice.\\
+The definition of nested protocols presented in the nested protocols paper\cite{nestedprotocols}, which can be seen in Section \ref{nested-session-types}, allowed a nested protocol call to specify values which should be passed into the subsession. We will not support the ability to send values when calling a nested protocol explicitly. However, in the protocol implementation we will provide a means for the user to pass in values to subsessions by initialising the state of the different roles which will participate in the nested protocol, so this omission should not have a great impact in practice.\\
 
 We introduce a precise definition for the scope of protocols, which the original paper did not handle explicitly. Through the use of scopes, the users can encapsulate different behaviours as nested protocols which can only be used inside a protocol, and these scope restrictions will be verified by the framework.\\
 
-The well-formedness property for protocols remains pretty much the same as before \cite{nestedprotocols}\cite{featherweight}. We say a protocol is well-formed if it is projectable and all protocol calls are valid. A protocol is projectable if the projection is defined for all the participants of that protocol. We incorporate the merging operator into the projection, which the original paper did not, extending the definition with the cases for invitations. A protocol call is valid if the protocol called is in scope, it is called with the correct number of roles and all the roles involved are distinct and in scope (participating in the current protocol).
+% When moving this, I need to ensure that I define what a valid protocol call is before it is refered to in other places.
+The well-formedness property for protocols still remains the same as before \cite{nestedprotocols}\cite{featherweight}. We say a protocol is well-formed if it is projectable and all protocol calls are valid. A protocol is projectable if the projection is defined for all the participants of that protocol. We incorporate the merging operator into the projection, which the original paper did not, extending the definition with the cases for invitations. A protocol call is valid if the protocol called is in scope, it is called with the correct number of roles and all the roles involved are distinct and in scope (participating in the current protocol).
 
 \subsection{Global Protocols}\label{scr-global-protocols}
 
-We have extended the definition of a Scribble module with nested protocols. Previously, a module was a collection of global protocols, but now it can also contain zero or more top-level nested protocols. However, it must still contain at least one global protocol (with no dynamic roles), which can be used as the entry point for the computation. Like in the original paper, nested protocols can also be defined inside both nested and global protocols.\\
+We have extended the definition of a Scribble module, which we described in Section \ref{Scribble}, with nested protocols. Previously, a module was a collection of global protocols, but now it can also contain zero or more top-level nested protocols. However, it must still contain at least one global protocol (with no dynamic roles), which can be used as the entry point for the computation. Like in the original paper\cite{nestedprotocols}, nested protocols can also be defined inside both nested and global protocols.\\
 
-Although nested protocols could in theory be defined anywhere within a scope, for ease of parsing in the Scribble implementation and to provide more structured Scribble modules, we restrict where nested protocol can be declared. At the top-level, any nested protocols must be defined before the global protocol declarations, and within other protocols, they must be declared before any of the interactions. However, these restrictions do not impact the expressiveness of the implementation, as the order of the protocol declarations within a scope does not matter.\\
+Although nested protocols could in theory be defined anywhere within a scope, for ease of parsing in the Scribble implementation and to provide more structured Scribble modules, we restrict the location where nested protocol can be declared. At the top-level, any nested protocols must be defined before the global protocol declarations, and within other protocols, they must be declared before any of the interactions. However, these restrictions do not impact the expressiveness of the implementation, as the order of the protocol declarations within a scope does not matter.\\
 
 \begin{figure}[!h]
-    \begin{itemize}
-        \item $Module ::= N\!*\ P+$
-        \item $N ::=\nested\ \protocol\ pro(\role\ A_1,\ ...,\ \role\ A_n;\ \scrnew\ \role B_1,\ ...,\ \role\ B_m)\ \{PBody\}$
-        \item  $P ::=\nested\ \protocol\ pro(\role\ A_1,\ ...,\ \role\ A_n)\ \{PBody\}$
-        \item $PBody ::=  N\!*\ G$
-        \item $G ::= $
-        
-        $\quad\quad|\ \choice\ \at\ A\ \{G_1\}\ \scror\ ...\ \scror\ \{G_n\}$
-    
-        $\quad\quad|\ \scrmessage{a}{S}\ \from\ A\ \scrto\ B;\ G$
-        
-        $\quad\quad|\ \rec\ t\ \{G\}$
-        
-        $\quad\quad|\ \continue\ t$
-        
-        $\quad\quad|\ \scrdo\ pro(A_1,\ ...\ ,\ A_n);\ G$
-    
-        $\quad\quad|\ A\ \calls\ pro(A_1,\ ...\ ,\ A_n);\ G$
-        
-        $\quad\quad|\ \scrend$
-    
-    \end{itemize}
+    {\centering
+    $\mathit{Module}\ ::=\ \mathit{N}\!*\ \mathit{P}+$\\[8pt]
+
+    $\mathit{PBody}\ ::=\  \mathit{N}\!*\ \mathit{G}$\\[8pt]
+
+    $\mathit{N}\ ::=\ \nested\ \protocol\ \mathit{pro}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\;\mathit{PBody}\;\}$\\[8pt]
+
+    $\mathit{P}\ ::=\ \scrglobal\ \protocol\ \mathit{pro}(\rolessig{A}{n})\ \{\;\mathit{PBody}\;\}$\\[8pt]
+
+    \begin{center}$
+        \begin{array}{rcl}
+            \mathit{G} & ::= &\\[2.75pt]
+                &   | & \choice\ \at\ \mathit{A}\ \{\;\mathit{G_1}\;\}\ \scror\ ...\ \scror\ \{\;\mathit{G_n}\;\} \\[2.75pt]
+                &   | & \scrmessage{a}{S}\ \from\ \mathit{A}\ \scrto\ \mathit{B};\ \mathit{G} \\[2.75pt]
+                &   | & \rec\ \mathit{t}\ \{\;G\;\} \\[2.75pt]
+                &   | &  \continue\ \mathit{t} \\[2.75pt]
+                &   | & \scrdo\ \mathit{pro}(\roles{A}{n});\ \mathit{G} \\[2.75pt]
+                &   | &  \mathit{A}\ \calls\ \mathit{pro}(\roles{A}{n});\ G\\[2.75pt]
+                &   | & \scrend \\[2.75pt]
+        \end{array}
+    $\end{center}
+    }
     \caption{Syntax for Scribble module with nested protocols}
     \label{scribble-nested-syntax-global}
 \end{figure}
+
+% \begin{figure}[!h]
+%     \begin{itemize}
+%         \item $\mathit{Module}\ ::=\ \mathit{N}\!*\ \mathit{P}+$
+%         \item $\mathit{N}\ ::=\ \nested\ \protocol\ \mathit{pro}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\;\mathit{PBody}\;\}$
+%         \item  $\mathit{P}\ ::=\ \scrglobal\ \protocol\ \mathit{pro}(\rolessig{A}{n})\ \{\;\mathit{PBody}\;\}$
+%         \item $\mathit{PBody}\ ::=\  \mathit{N}\!*\ \mathit{G}$
+%         \item $\mathit{G}\ ::= $
+        
+%         $\quad\quad|\ \choice\ \at\ \mathit{A}\ \{\;\mathit{G_1}\;\}\ \scror\ ...\ \scror\ \{\;\mathit{G_n}\;\}$
+    
+%         $\quad\quad|\ \scrmessage{a}{S}\ \from\ \mathit{A}\ \scrto\ \mathit{B};\ \mathit{G}$
+        
+%         $\quad\quad|\ \rec\ \mathit{t}\ \{\,\mathit{G}\;\}$
+        
+%         $\quad\quad|\ \continue\ \mathit{t}$
+        
+%         $\quad\quad|\ \scrdo\ \mathit{pro}(\roles{A}{n});\ G$
+    
+%         $\quad\quad|\ \mathit{A}\ \calls\ \mathit{pro}(\roles{A}{n});\ G$
+        
+%         $\quad\quad|\ \scrend$
+    
+%     \end{itemize}
+%     \caption{Syntax for Scribble module with nested protocols}
+%     \label{scribble-nested-syntax-global}
+% \end{figure}
 
 
 A formal specification of our proposed syntax for Scribble modules with nested protocols is given in Figure \ref{scribble-nested-syntax-global}, and we provide some examples of global and nested protocols in Figure \ref{scribble-nested-global}. We introduce several new keywords in order to define nested protocols and calls to nested protocols, while trying to preserve as much of the original syntax and behaviour as possible.
@@ -679,7 +733,7 @@ A formal specification of our proposed syntax for Scribble modules with nested p
  
 \subsection{Scopes}
 
-As it was briefly mentioned in Section \ref{scribble-extensions}, the original paper did not handle the scopes in which protocols could be called explicitly. In our Scribble extension we provide a more precise definition of protocol's scope and how it affects which protocols can be called from within different protocols in a Scribble module.\\
+As it was briefly mentioned in Section \ref{scribble-extensions}, the original paper\cite{nestedprotocols} did not handle the scopes in which protocols could be called explicitly. In our Scribble extension we provide a more precise definition of protocol's scope and how it affects which protocols can be called from within different protocols in a Scribble module.\\
 
 In a Scribble module we have the top-level scope, where the user can define global and nested protocols which can be called from any protocol, no matter how deeply nested its declaration is. As we mentioned in Section \ref{scr-global-protocols}, each protocol declaration introduces a new scope of its own.  Any nested protocols defined within are not visible outside that  protocol, but can be used in that protocol's implementation and any nested protocols defined within.\\
 
@@ -691,11 +745,17 @@ As we mentioned in Section \ref{scr-global-protocols}, defining a nested protoco
 
 \subsection{Renaming Protocols}\label{renaming}
 
-Once the validation of all the protocols has been completed, ensuring that the scope restrictions are not violated and that all protocol calls are valid, it is possible to "flatten" the representation of the protocols. In order to do this, all name clashes between different protocol must be resolved by renaming protocols so that all protocol names are unique. Moreover, if we make every protocol name unique, then we can remove the distinction between global and nested protocols and treat protocol calls to both global and nested protocols uniformly, as there can be no ambiguity with regards to which protocol is going to be called.\\
+After ensuring that none of the protocol violates the scope restrictions and that all protocol calls are valid, it is possible to "flatten" the representation of the protocols. In order to do this, all name clashes between different protocol must be resolved by renaming protocols so that all protocol names are unique. Moreover, if we make every protocol name unique, then we can remove the distinction between global and nested protocols and treat protocol calls to both global and nested protocols uniformly, as there can be no ambiguity with regards to which protocol is going to be called.\\
 
-The result of this renaming process is a set of protocols which do not contain any nested protocols within, where both global and nested protocols have been converted into this intermediate representation. We define a slightly different syntax for this representation, which is essentially the same as a nested protocol declaration without any nested protocols inside:\\
+The result of this renaming process is a set of protocols which do not contain any nested protocols within, where both global and nested protocols have been converted into this intermediate representation. We define a slightly different syntax for this representation, as shown in Figure \ref{protocols-after-renaming}, which is essentially the same as a nested protocol declaration without any nested protocols inside.\\
 
-$\protocol\ P(\role\ A_1,\ ...,\ \role\ A_n;\ \scrnew\ \role\ B_1,\ ...,\ \role\ B_m)\ \{\;G\;\}$\\
+\begin{figure}[h!]
+    \centering
+    $\protocol\ P(\role\ A_1,\ ...,\ \role\ A_n;\ \scrnew\ \role\ B_1,\ ...,\ \role\ B_m)\ \{\;G\;\}$\\
+    \caption{Intermediate representation of protocols after renaming}
+    \label{protocols-after-renaming}
+\end{figure}
+
 
 We present a renaming algorithm which uses two environments. The first one maps the original protocol names that were accessible in the current scope to the unique names of the protocols they refer to, while the second environment holds the set of all the unique protocol names which have been generated. The scope environment can be used to update the protocol calls in the interactions of a protocol, and the protocol name environment is necessary to generate globally unique protocol names. We define the algorithm in pseudocode in Figures \ref{renaming-interactions} and \ref{renaming-module}.\\
 
@@ -735,11 +795,11 @@ Renaming a protocol's interactions simply requires recursively traversing the gl
         
     def rename_nested_protocols(nested_protocols, ScopeEnv, ProtocolNames):
         renamed_protocols = (*$\emptyset$*)
-        for (nested protocol P(roles; new_roles) {nested_protos; G}) in nested_protocols:
+        for (nested protocol P((*$\rolessig{A}{n}$*); (*$\scrnew\ \rolessig{B}{m}$*)) {nested_protos; G}) in nested_protocols:
             newP = UNIQUE_NAME(P, ProtocolNames)
             ScopeEnv = ScopeEnv[P -> newP]
             ProtocolNames = ProtocolNames (*$\bigcup$*) {newP}
-            renamed_protocols = renamed_protocols (*$\bigcup$*) {nested protocol newP(roles; new_roles) {nested_protos; G}}
+            renamed_protocols = renamed_protocols (*$\bigcup$*) {(*$\;$*)nested protocol newP((*$\rolessig{A}{n}$*); (*$\scrnew\ \rolessig{B}{m}$*)) {nested_protos; G}(*$\;$*)}
         return (renamed_protocols, ScopeEnv, ProtocolNames)
     \end{lstlisting}
     \caption{Algorithm for renaming protocol interactions}
@@ -776,8 +836,8 @@ Renaming a protocol's interactions simply requires recursively traversing the gl
         renamed_nested_protocols, ScopeEnv, ProtocolNames = 
               rename_nested_protocols(nested_protocols, ScopeEnv, ProtocolNames)
         TopLevelProtocols = TopLevelProtocols (*$\bigcup$*) renamed_nested_protocols
-        for protocol in TopLevelProtocols:
-            ProtocolNames, AllProtocols = rename_and_flatten_protocols(protocol, SetupEnv, ProtocolNames, AllProtocols)
+        for top_level_protocol in TopLevelProtocols:
+            ProtocolNames, AllProtocols = rename_and_flatten_protocols(top_level_protocol, SetupEnv, ProtocolNames, AllProtocols)
 
         return AllProtocols
 
@@ -788,36 +848,58 @@ Renaming a protocol's interactions simply requires recursively traversing the gl
 \clearpage
 \subsection{Local Protocols}
 
-After extending the syntax for Scribble global protocols we also had to modify the definition of projection of Scribble global types presented in \cite{featherweight} to include these new constructs. We therefore extend the syntax of Scribble local types with constructs for sending and receiving invitations following the session types presented in \cite{nestedprotocols}. \\
+After extending the syntax for Scribble global protocols we also had to modify the definition of projection of Scribble global types presented in \cite{featherweight} to include these new constructs, which we describe in Section \ref{scribble-projection}. We therefore extend the syntax of Scribble local types with constructs for sending and receiving invitations following the session types presented in \cite{nestedprotocols}. \\
+
+% \begin{figure}[h!]
+%     \begin{itemize}
+%         \item $L ::=\scrlocal\ \protocol\ A@pro(\role A_1,\ ...,\ \role A_n;\ \scrnew\ \role\ B_1,\ ...,\ \role\ B_m)\ \{T\}$
+%         \item $T ::= $
+        
+%         $\quad\quad|\ \choice\ \at\ A\ \{T_1\}\ \scror\ ...\ \scror\ \{T_n\}$
+    
+%         $\quad\quad|\ \scrmessage{a}{S}\ \from\ B;\ T$
+    
+%         $\quad\quad|\ \scrmessage{a}{S}\ \scrto\ B;\ T$
+        
+%         $\quad\quad|\ \rec\ t\ \{T\}$
+        
+%         $\quad\quad|\ \continue\ t$
+        
+%         $\quad\quad|\ \invite(A_1,\ ...\ ,\ A_n)\ \scrto\ pro;\ T$
+        
+%         $\quad\quad|\ \create(\role\ B_1,\ ...\ ,\role\ B_n)\ \scrin\ pro;\ T$
+    
+%         $\quad\quad|\ \accept\ C@pro(A_1,\ ...\ ,\ A_n;\ \scrnew\ B_1,\ ...\ ,\ B_m)\ \from\ A;\ T$
+    
+%         $\quad\quad|\ \scrend$
+%     \end{itemize}
+%     \caption{Syntax of Scribble local protocols extended with invitations}
+%     \label{scr-local-protocols-syntax}
+% \end{figure}
 
 \begin{figure}[h!]
-    \begin{itemize}
-        \item $L ::=\scrlocal\ \protocol\ A@pro(\role A_1,\ ...,\ \role A_n;\ \scrnew\ \role\ B_1,\ ...,\ \role\ B_m)\ \{T\}$
-        \item $T ::= $
-        
-        $\quad\quad|\ \choice\ \at\ A\ \{T_1\}\ \scror\ ...\ \scror\ \{T_n\}$
-    
-        $\quad\quad|\ \scrmessage{a}{S}\ \from\ B;\ T$
-    
-        $\quad\quad|\ \scrmessage{a}{S}\ \scrto\ B;\ T$
-        
-        $\quad\quad|\ \rec\ t\ \{T\}$
-        
-        $\quad\quad|\ \continue\ t$
-        
-        $\quad\quad|\ \invite(A_1,\ ...\ ,\ A_n)\ \scrto\ pro;\ T$
-        
-        $\quad\quad|\ \create(\role\ B_1,\ ...\ ,\role\ B_n)\ \scrin\ pro;\ T$
-    
-        $\quad\quad|\ \accept\ C@pro(A_1,\ ...\ ,\ A_n;\ \scrnew\ B_1,\ ...\ ,\ B_m)\ \from\ A;\ T$
-    
-        $\quad\quad|\ \scrend$
-    \end{itemize}
+    \centering
+    \begin{math}
+        \begin{array}{rcl}
+            \mathit{L} & ::= & \scrlocal\ \protocol\ \mathit{A@pro}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\;T\;\} \\\\
+            % G & ::= & \texttt{end} & \white &
+            \mathit{T} & ::= &\\[2.75pt]
+              &   | & \choice\ \at\ \mathit{A}\ \{T_1\}\ \scror\ ...\ \scror\ \{T_n\} \\[2.75pt]
+              &   | & \scrmessage{a}{S}\ \from\ \mathit{B};\ \mathit{T} \\[2.75pt]
+              &   | & \scrmessage{a}{S}\ \scrto\ \mathit{B};\ \mathit{T} \\[2.75pt]
+              &   | & \rec\ \mathit{t}\ \{\;T\;\} \\[2.75pt]
+              &   | &  \continue\ \mathit{t} \\[2.75pt]
+              &   | & \invite(\roles{A}{n})\ \scrto\ \mathit{pro}\,;\ \mathit{T} \\[2.75pt]
+              &   | & \create(\rolessig{B}{m})\ \scrin\ \mathit{pro}\,;\ \mathit{T}\\[2.75pt]
+              &   | & \accept\ \mathit{C@pro}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ \mathit{A}\,;\ \mathit{T}\\[2.75pt]
+              &   | & \scrend \\[2.75pt]
+        \end{array}
+    \end{math}
     \caption{Syntax of Scribble local protocols extended with invitations}
     \label{scr-local-protocols-syntax}
 \end{figure}
 
-Our proposed extensions to syntax of Scribble local protocols is shown in Figure \ref{scr-local-protocols-syntax}, and some examples of local protocols, which correspond to the projections of the protocols in Figure \ref{scribble-nested-global}, are can be seen in Figure \ref{scribble-nested-local}. We have kept all the original Scribble constructs and added three new ones for sending invitations, accepting invitations and for initializing dynamic roles:
+Our proposed extensions to the syntax of Scribble local protocols are shown in Figure \ref{scr-local-protocols-syntax}, and some examples of local protocols, which correspond to the projections of the protocols in Figure \ref{scribble-nested-global}, are can be seen in Figure \ref{scribble-nested-local}. We have kept all the original Scribble constructs and added three new ones for sending invitations, accepting invitations and for initializing dynamic roles:
 
 \begin{itemize}
     \item The sending of internal invitations is expressed by the $\invite$ construct, which specifies the roles which are going to participate, and the name of the protocol to which they are invited. The syntax for the $\invite$ contruct shown above can be seen as a shorthand for sending a series of individual invitations in parallel (asynchronously) to all the roles who are going to participate in the protocol. Indeed, this idea could be expressed with an alternative notation such as:
@@ -856,124 +938,254 @@ Our proposed extensions to syntax of Scribble local protocols is shown in Figure
     \label{scribble-nested-local}
 \end{figure}{}
 
-\section{Projection}
-As in the original paper, projecting a global or nested protocol requires having an environment which keeps track of all the protocols which are in scope. Our definition of projection is defined on the flattened representation of the Scribble module. This representation is generated by the renaming process described in Section \ref{renaming-interactions}, where the protocols are stored in one large set and the distinction between global and nested protocols has been removed. Moreover, in order to successfully rename all the protocols the original Scribble module must have been validated to ensure all protocol calls are valid. From this flattened representation, building the projection environment is a trivial process, where the protocol declarations in the set can be aggregated to create a mapping from the protocols' names to their role signatures ($P \mapsto \{\roles{A}{n};\ \roles{B}{m}\}$).\\
+\section{Projection}\label{scribble-projection}
+As in the original paper, projecting a global or nested protocol requires having an environment which keeps track of all the protocols which are in scope. Our definition of projection is defined on the flattened representation of the Scribble module. This representation is generated by the renaming process described in Section \ref{renaming-interactions}, where the protocols are stored in one large set and the distinction between global and nested protocols has been removed. Moreover, in order to successfully rename all the protocols the original Scribble module must have been validated to ensure all protocol calls are valid. From this flattened representation, building the projection environment is a trivial process, where the protocol declarations in the set can be aggregated to create a mapping from protocol names to their role signatures ($P \mapsto \{\roles{A}{n};\ \roles{B}{m}\}$).\\
 
 It is not a problem to store the signatures of all the protocols in the environment, because in the validation step and the renaming process we will have already verified that the scope restriction is not violated, so the protocols will only ever need to look up protocols which are defined in their scope in the projection environment. The definition of projection is undefined for protocol calls to protocols which are not in the environment, but this case should never arise if the protocols have passed the previous validation steps we have described.
 
 \subsection{Projection of Global Protocols}
 
-In order to generate all the local protocols in a Scribble module, we must project every protocol onto every role taking part in it, which will generate a much larger set of local protocols. We define the projection of a Scribble protocol $P$ onto a role $A$ as follows: \\
+In order to generate all the local protocols in a Scribble module, we must project every protocol onto every role taking part in it, which will generate a much larger set of local protocols. We define the projection of a Scribble protocol $P$ onto a role $A$ in Figure \ref{scribble-protocol-projection}.
 
-If $A \in \{\roles{A}{n},\ \roles{B}{m}\}$ then:
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $(\protocol\ \mathit{P}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\mathit{G}\})\project\ =$\\[7pt]
+            \begin{math}
+                \begin{cases}
+                    \mathit{If}\ \mathit{A} \in \{\roles{A}{n},\ \roles{B}{m}\}:\\
+                    \scrlocal\ \protocol\ \mathit{A@P}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\mathit{G} \project\}\\[8pt]
+                    \mathit{Otherwise:} \quad \mathit{undefined}
+                \end{cases}
+            \end{math}
+        \end{tabular}
+    \end{center}
+    \caption{Projection of a Scribble protocol}
+    \label{scribble-protocol-projection}
+\end{figure}
+% If $A \in \{\roles{A}{n},\ \roles{B}{m}\}$ then:
 
-$(\protocol\ P(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{G\})\downarrow_A^{Env}\ =$
+% $(\protocol\ P(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{G\})\downarrow_A^{Env}\ =$
 
-$\scrlocal\ \protocol\ A@P(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{G \downarrow_A^{Env}\}$\\
+% $\scrlocal\ \protocol\ A@P(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{G \downarrow_A^{Env}\}$\\
 
 % Otherwise it is undefined. \\
 
-% Similarly for a Scribble global protocol. If $A \in \{A_1,\ ...\ ,\ A_m\}$ then:
 
-% $(\scrglobal\ \protocol\ P(\rolessig{A}{n})\ \{G\})\downarrow_A^{Env}\ =$
+The projection operation on global protocols remains the same as defined in the Featherweight Scribble paper\cite{featherweight} for all constructs except the $\choice$. Figure \ref{featherweight-scribble-projections} shows these definitions, which we have taken from the paper. We denote $\mathcal{P}(G)$ as the set of roles participating in protocol $G$.\\
 
-% $\scrlocal\ \protocol\ A@P(\rolessig{A}{n})\ \{G \downarrow_A^{Env}\}$\\
+Previously, the $\scrdo$ construct would be expanded before projection, which we do not do. However, after removing the distinction between global and nested protocols, all calls to global protocols using the $\scrdo$ construct will have been converted to $\calls$, so we also do not need to define a rule for projecting $\scrdo$. \\
 
-Otherwise it is undefined.\\
-
-The projection operation of global protocols remains pretty much the same as defined in the Featherweight Scribble paper\cite{featherweight} for all constructs except the $\choice$. Previously, the $\scrdo$ construct would be expanded before projection, which we do not do. However, after removing the distinction between global and nested protocols, all calls to global protocols using the $\scrdo$ construct will have been converted to $\calls$, so we also do not need to define a rule for projecting $\scrdo$. \\
-
-We denote $\mathcal{P}(G)$ as the set of roles participating in protocol $G$. We define the projection of a global protocol $G$ onto a role $A$ as follows:\\
-    
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $(\scrmessage{a}{S}\ \from\ \mathit{B}\ \scrto\ \mathit{C};\ G') \project\ =\ $\\[3.5pt]
+            \begin{math}
+                \begin{cases}
+                    \scrmessage{a}{S}\ \scrto\ \mathit{C};\ (\mathit{G'} \project) & \mathit{if}\ \mathit{A}\ =\ \mathit{B}\\[3pt]
+                    \scrmessage{a}{S}\ \from\ \mathit{B};\ (\mathit{G'} \project) & \mathit{if}\ \mathit{A}\ =\ \mathit{C}\\[3pt]
+                    \mathit{G'} \project & \mathit{otherwise}
+                \end{cases}
+            \end{math}
+            \\\\
+            $(\rec\ \mathit{t}\ \{\mathit{G'}\}) \project\ =$\\[3.5pt]
+            \begin{math}
+               \begin{cases}
+                   \rec\ \mathit{t}\ \{\mathit{G'} \project\} & \mathit{if}\ \mathit{A}\ \in\ \mathcal{P}(G')\\
+                   \scrend & \mathit{otherwise}
+               \end{cases}
+           \end{math}
+           \\\\
+           $(\continue\ \mathit{t}) \project\ =\ \continue\ \mathit{t}$
+           \\\\
+           $(\scrend) \project\ =\ \scrend$
+        \end{tabular}
+    \end{center}
  
- $(\scrmessage{a}{S}\ \from\ B\ \scrto\ C;\ G') \project\ =\ $\\[3.5pt]
-\begin{math}
-    \begin{cases}
-        \scrmessage{a}{S}\ \scrto\ C;\ (G' \project) & if\ A\ =\ B\\[3pt]
-        \scrmessage{a}{S}\ \from\ B;\ (G' \project) & if\ A\ =\ C\\[3pt]
-        G' \project & otherwise
-    \end{cases}\\\\
-\end{math}
+    \caption{Projection of constructs taken from Featherweight Scribble\cite{featherweight}}
+    \label{featherweight-scribble-projections}
+\end{figure}
+
+The projection of the $\calls$ construct is very similar to the projection of the protocol call in the original paper\cite{nestedprotocols}, and it considers the same 4 cases. When the projected role is making a call, it must send all the invitations to the other participants, potentially including itself. It must also send external invitations to the new dynamic participants which will take part in the subsession, if any. If there are no dynamic participants, then the $\create$ construct can be omitted. If the projected role is taking part in the subsession, then it must also accept the invitation to the appropriate role in the nested protocol from the caller. If the projected role is neither the caller or a participant in the protocol call, then the protocol call can be ignored. The formal definition of the projection of the $\calls$ construct is shown in Figure \ref{scribble-calls-projection}\\
  
- $(\rec\ t\ \{G'\}) \project\ =$\\[3.5pt]
- \begin{math}
-    \begin{cases}
-        \rec\ t\ \{G' \project\} & if\ A\ \in\ \mathcal{P}(G')\\
-        \scrend & otherwise
-    \end{cases}\\\\
-\end{math}
+%  $(\scrmessage{a}{S}\ \from\ B\ \scrto\ C;\ G') \project\ =\ $\\[3.5pt]
+% \begin{math}
+%     \begin{cases}
+%         \scrmessage{a}{S}\ \scrto\ C;\ (G' \project) & if\ A\ =\ B\\[3pt]
+%         \scrmessage{a}{S}\ \from\ B;\ (G' \project) & if\ A\ =\ C\\[3pt]
+%         G' \project & otherwise
+%     \end{cases}\\\\
+% \end{math}
  
- $(\continue\ t) \project\ =\ \continue\ t$\\
+%  $(\rec\ t\ \{G'\}) \project\ =$\\[3.5pt]
+%  \begin{math}
+%     \begin{cases}
+%         \rec\ t\ \{G' \project\} & if\ A\ \in\ \mathcal{P}(G')\\
+%         \scrend & otherwise
+%     \end{cases}\\\\
+% \end{math}
  
- $(\scrend) \project\ =\ \scrend$\\
+%  $(\continue\ t) \project\ =\ \continue\ t$\\
  
- $(C\ \calls\ P(\roles{A}{n});\ G') \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}\ =$\\[3.5pt]
- \begin{math}
-    \begin{cases}
-        \invite(\roles{A}{n})\ \scrto\ P; & if\ A\ =\ C,\ \exists i. C\ =\ A_i\\[0.25pt]
-        \create(\rolessig{B}{m})\ \scrin\ P; & \\[0.25pt]
-        \accept\ D_i@P(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ C; & \\[0.25pt]
-        (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \\[13pt]
+%  $(\scrend) \project\ =\ \scrend$\\
+ 
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $(C\ \calls\ P(\roles{A}{n});\ G') \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}\ =$\\[3.5pt]
+            \begin{math}
+                \begin{cases}
+                    \invite(\roles{A}{n})\ \scrto\ \mathit{P}; & \mathit{if}\ \mathit{A}\ =\ \mathit{C},\ \exists i. \mathit{C}\ =\ \mathit{A_i}\\[0.25pt]
+                    \create(\rolessig{B}{m})\ \scrin\ \mathit{P}; & \\[0.25pt]
+                    \accept\ \mathit{D_i@P}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ \mathit{C}; & \\[0.25pt]
+                    (\mathit{G'} \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \\[13pt]
 
-        \invite(\roles{A}{n})\ \scrto\ P; & if\ A\ =\ C,\ C \notin \{A_1,\ ...\ ,\ A_n\} \\[0.25pt]
-        \create(\rolessig{B}{m})\ \scrin\ P; &\\[0.25pt]
-        (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) &\\[13pt]
+                    \invite(\roles{A}{n})\ \scrto\ \mathit{P}; & \mathit{if}\ \mathit{A}\ =\ \mathit{C},\ \mathit{C} \notin \{\roles{A}{n}\} \\[0.25pt]
+                    \create(\rolessig{B}{m})\ \scrin\ \mathit{P}; &\\[0.25pt]
+                    (\mathit{G'} \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) &\\[13pt]
 
-        \accept\ D_i@P(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ C; & if\ A\ \neq\ C,\ \exists i. C\ =\ A_i\\[0.25pt]
-        (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \\[13pt]
+                    \accept\ \mathit{D_i@P}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ C; & \mathit{if}\ \mathit{A}\ \neq\ \mathit{C},\ \exists i. C\ =\ A_i\\[0.25pt]
+                    (\mathit{G'} \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \\[13pt]
 
-        (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & otherwise
-    \end{cases}\\\\
-\end{math}
+                    (\mathit{G'} \projectenv{Env,\ \mathit{P}\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \mathit{otherwise}
+                \end{cases}
+            \end{math}
+        \end{tabular}
+    \end{center}
+    \caption{Projection of $\calls$ construct}
+    \label{scribble-calls-projection}
+\end{figure}
 
-Let:
+%  $(C\ \calls\ P(\roles{A}{n});\ G') \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}\ =$\\[3.5pt]
+%  \begin{math}
+%     \begin{cases}
+%         \invite(\roles{A}{n})\ \scrto\ P; & if\ A\ =\ C,\ \exists i. C\ =\ A_i\\[0.25pt]
+%         \create(\rolessig{B}{m})\ \scrin\ P; & \\[0.25pt]
+%         \accept\ D_i@P(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ C; & \\[0.25pt]
+%         (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \\[13pt]
 
-$\mathtt{MSG\_FROM}(R)\ =$
+%         \invite(\roles{A}{n})\ \scrto\ P; & if\ A\ =\ C,\ C \notin \{A_1,\ ...\ ,\ A_n\} \\[0.25pt]
+%         \create(\rolessig{B}{m})\ \scrin\ P; &\\[0.25pt]
+%         (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) &\\[13pt]
 
-$\quad \quad |\ \scrmessage{a}{S}\ \from\ R\ to\ C$
+%         \accept\ D_i@P(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ C; & if\ A\ \neq\ C,\ \exists i. C\ =\ A_i\\[0.25pt]
+%         (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \\[13pt]
 
-$\quad \quad |\ R\ \calls\ P(\roles{A}{n})$
+%         (G' \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & otherwise
+%     \end{cases}\\\\
+% \end{math}
 
-$\mathtt{RECV\_FROM}(R)\ =$
+\begin{figure}[h!]
+    \begin{center}
+        \begin{tabular}{l}
+            % $\mathtt{MSG\_FROM}(R)\ =$\\
 
-$\quad \quad |\ \scrmessage{a}{S}\ \from\ R$
+            % $\quad \quad |\ \scrmessage{a}{S}\ \from\ \mathit{R}\ \scrto\ \mathit{C}$\\
 
-$\quad \quad |\ \accept\ D@P(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ R$
+            % $\quad \quad |\ \mathit{R}\ \calls\ \mathit{P}(\roles{A}{n})$\\[7pt]
 
-$\mathtt{FIRST\_RECEIVERS}(G)\ =$
+            $\mathtt{RECV\_FROM}(\mathit{R})\ =$\\
 
-\begin{math}
-    \begin{cases}
-        \{B\} & if\ G\ =\ \scrmessage{a}{S}\ \from\ A\ \scrto\ B;\ G'\\
-        \{\roles{A}{n}\} & if\ G\ =\ A\ \calls\ P(\roles{A}{n});\ G'\\
-        \emptyset & otherwise
-    \end{cases}\\\\
-\end{math}
+            $\quad \quad |\ \scrmessage{a}{S}\ \from\ \mathit{R}$\\
 
-We then define the projection of $\choice$ as:\\
+            $\quad \quad |\ \accept\ \mathit{D@P}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ \mathit{R}$\\[7pt]
 
- $(\choice\ \at\ B\ \{G_i\}_{i \in I}) \project\ =$\\[3.5pt]
- \begin{math}
-    \begin{cases}
-        \choice\ \at\ B\ \{(G_i \project)\}_\varinset{i}{I} & if A\ =\ B\ or\ A\ \in\ \displaystyle \bigcap_\varinset{i}{I}\ \mathtt{FIRST\_RECEIVERS}(G_i)\\
-        \displaystyle \bigsqcup_\varinset{i}{I}\ (G_i \project) & otherwise\\
-    \end{cases}\\[2pt]
-\end{math}
+            $R_1 = R_2 \implies \mathtt{IS\_MSG\_FROM}(\,R_2,\ \contG{\messageG{a}{S}{R_1}{C}}{G}\;)$\\[7pt]
 
-where:
-\begin{itemize}
-    \item $G_i\ =\ \mathtt{MSG\_FROM}(B)_i;\ G'_i$
-    \item $\bigsqcup$ is the full merge operator, which is defined in Figure \ref{fullmerge}
-\end{itemize}
+            $R_1 = R_2 \implies \mathtt{IS\_MSG\_FROM}(\,R_2,\ \contG{\callsG{R_1}{P}{A}}{G}\;)$\\[14pt]
+
+            $R_1 = R_2 \implies \mathtt{IS\_RECV\_FROM}(\,R_2,\ \contG{\messageFromL{a}{S}{R_1}}{T}\;)$\\[7pt]
+
+            $R_1 = R_2 \implies \mathtt{IS\_RECV\_FROM}(\,R_2,\ \contG{\acceptL{D@P}{A}{B}{R_1}}{T}\;)$\\[14pt]
+
+            $\mathtt{FIRST\_RECEIVERS}(\,G\,)\ =$\\
+
+            \begin{math}
+                \begin{cases}
+                    \{B\} & \mathit{if}\ G\ =\ \scrmessage{a}{S}\ \from\ \mathit{A}\ \scrto\ \mathit{B};\ \mathit{G'}\\
+                    \{\roles{A}{n}\} & \mathit{if}\ \mathit{G}\ =\ \mathit{A}\ \calls\ \mathit{P}(\roles{A}{n});\ \mathit{G'}\\
+                    \emptyset & \mathit{otherwise}
+                \end{cases}
+            \end{math}
+        \end{tabular}
+    \end{center}
+    \caption{Auxiliary definitions for projection of $\choice$ and merge operator}
+    \label{scribble-choice-aux-predicates}
+\end{figure}
+
+% Let:
+
+% $\mathtt{MSG\_FROM}(R)\ =$
+
+% $\quad \quad |\ \scrmessage{a}{S}\ \from\ R\ to\ C$
+
+% $\quad \quad |\ R\ \calls\ P(\roles{A}{n})$
+
+% $\mathtt{RECV\_FROM}(R)\ =$
+
+% $\quad \quad |\ \scrmessage{a}{S}\ \from\ R$
+
+% $\quad \quad |\ \accept\ D@P(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ R$
+
+% $\mathtt{FIRST\_RECEIVERS}(G)\ =$
+
+% \begin{math}
+%     \begin{cases}
+%         \{B\} & if\ G\ =\ \scrmessage{a}{S}\ \from\ A\ \scrto\ B;\ G'\\
+%         \{\roles{A}{n}\} & if\ G\ =\ A\ \calls\ P(\roles{A}{n});\ G'\\
+%         \emptyset & otherwise
+%     \end{cases}\\\\
+% \end{math}
+
+\begin{figure}[h!]
+    \begin{center}
+        \begin{tabular}{l}
+            $(\choice\ \at\ \mathit{B}\ \{\mathit{G_i}\}_{i \in I}) \project\ =$\\[3.5pt]
+            \begin{math}
+               \begin{cases}
+                   \choice\ \at\ \mathit{B}\ \{(\mathit{G_i} \project)\}_\varinset{i}{I} & \mathit{if} \mathit{A}\ =\ \mathit{B}\ \mathit{or}\ \mathit{A}\ \in\ \displaystyle \bigcap_\varinset{i}{I}\ \mathtt{FIRST\_RECEIVERS}(\mathit{G_i})\\
+                   \displaystyle \bigsqcup_\varinset{i}{I}\ (\mathit{G_i} \project) & \mathit{otherwise}\\
+               \end{cases}
+           \end{math}\\\\
+           
+           \textit{if} $\forall \varinset{i}{I}.\mathtt{IS\_MSG\_FROM}(\,B,\; G _i\,)$\\[10pt]
+           \textit{Otherwise it is undefined}
+        %    \quad $\bullet$ $\bigsqcup$ is the full merge operator, which is defined in Figure \ref{fullmerge}
+        \end{tabular}
+    \end{center}
+    \caption{Projection of $\choice$ extended with invitations}
+    \label{scribble-choice-projection}
+\end{figure}
+
+% We then define the projection of $\choice$ as:\\
+
+%  $(\choice\ \at\ B\ \{G_i\}_{i \in I}) \project\ =$\\[3.5pt]
+%  \begin{math}
+%     \begin{cases}
+%         \choice\ \at\ B\ \{(G_i \project)\}_\varinset{i}{I} & if A\ =\ B\ or\ A\ \in\ \displaystyle \bigcap_\varinset{i}{I}\ \mathtt{FIRST\_RECEIVERS}(G_i)\\
+%         \displaystyle \bigsqcup_\varinset{i}{I}\ (G_i \project) & otherwise\\
+%     \end{cases}\\[2pt]
+% \end{math}
+
+% where:
+% \begin{itemize}
+%     \item $G_i\ =\ \mathtt{MSG\_FROM}(B)_i;\ G'_i$
+%     \item $\bigsqcup$ is the full merge operator, which is defined in Figure \ref{fullmerge}
+% \end{itemize}
  
 
-Otherwise, the projection of $\choice$ is undefined.\\
+% Otherwise, the projection of $\choice$ is undefined.\\
 
-The Scribble $\choice$ construct doesn't have a very well-defined semantics and projection definition. Different implementations of Scribble may have slightly different definitions about what constitutes a well-formed choice.  We base our definition on the Multiparty Session Types\cite{gentleintrotompst} and the definition given in the Featherweight Scribble paper\cite{featherweight}.\\
+The Scribble $\choice$ construct does not have a very well-defined semantics and projection definition. Different implementations of Scribble may have slightly different definitions about what constitutes a well-formed choice.  We base our definition on the Multiparty Session Types\cite{gentleintrotompst} and the definition given in the Featherweight Scribble paper\cite{featherweight}. We define the projection of the $\choice$ construct in Figure \ref{scribble-choice-projection}.\\
 
-Before taking nested protocols into account, we define a $\choice$ contruct as a directed choice from the participant making the choice, e.g. $B$, to a single participant, which receives a distinct first message from $B$ in each choice branch. This first message will allow the receiving role to identify the choice $B$ makes. However, with the addition of nested protocols and invitations, labeled messages $\scrmessage{a}{S}$ are not the only type of messages which can be sent. A protocol call involves sending invitations to different roles, and receiving different invitations will also allow participants to discern which choice $B$ makes. Therefore, we allow having combination of protocol calls and message exchanges initiated by $B$ as the first interactions in the $\choice$ branches. We encode this restriction by enforcing that the global type of each branch must be $\mathtt{MSG\_FROM}(B)_i;\ G'_i$. We still require that each first message is unique in each branch - two protocol calls are only equal if the protocol name is the same and the same participants are invited to carry out the same roles in the called protocol.\\
 
-Taking invitations into account makes it possible for a $\choice$ to not have a single first receiver, because during the setup of a protocol call multiple invitations are sent out in parallel. Any of the roles which receive one of these invitations could potentially be considered as the first receiver in the choice. We therefore build the set of possible receivers as the intersection of the first receivers in each branch. This intersection must not be empty for the choice to be valid. As before, sending a labeled message restricts the possible candidates to the receiver of the message. We extract this information from the global types of each branch with the function $\mathtt{FIRST\_RECEIVERS}(G)$.\\
+Before taking nested protocols into account, we define a $\choice$ contruct as a directed choice from the participant making the choice, e.g. $\mathtt{B}$, to a single participant, which receives a distinct first message from $\mathtt{B}$ in each choice branch. This first message will allow the receiving role to identify the choice $\mathtt{B}$ makes. However, with the addition of nested protocols and invitations, labeled messages $\scrmessage{a}{S}$ are not the only type of messages which can be sent. A protocol call involves sending invitations to different roles, and receiving different invitations will also allow participants to discern which choice $\mathtt{B}$ makes. Therefore, we allow having combination of protocol calls and message exchanges initiated by $B$ as the first interactions in the $\choice$ branches.\\
+
+In order to enforce this restriction, we define an auxiliary predicate \texttt{\seqsplit{IS\_MSG\_FROM(R,\ G)}}, which can be seen in Figure \ref{scribble-choice-aux-predicates}. We define two rules from which this predicate can be derived, one for a protocol call and one for a labeled message exchange. The rules specify that in order to derive the predicate, the role which is the first parameter in the predicate must also be the sender of the message in the first interaction of the global type. Then, in the definition of the projection of $\choice$ we require that the global type of each branch satisfies the predicate $\mathtt{IS\_MSG\_FROM}(\,B,\ G_i)$, where \textit{B} is the role making the choice.\\
+
+On top of this restriction, we still require that each first message is unique in each branch. We consider that two protocol calls are equal only if the protocol name is the same and the same participants are invited to carry out the same roles in the called protocol, and two labeled messages are the same if both the labels and all the payloads are the same.\\
+
+Taking invitations into account makes it possible for a $\choice$ to not have a single first receiver, because during the setup of a protocol call multiple invitations are sent out in parallel. Any of the roles which receive one of these invitations could potentially be considered as the first receiver in the $\choice$. We therefore build the set of possible receivers as the intersection of the first receivers in each branch. This intersection must not be empty for the choice to be valid. As before, sending a labeled message restricts the possible candidates to the receiver of the message. We extract this information from the global types of each branch with the function $\mathtt{FIRST\_RECEIVERS}(G)$.\\
 
 Moreover, because the sending of invitations is asynchronous and a role can send an invitation to itself, it is valid to have a $\choice$ where the role making the choice is also a potential first receiver. This can occur if each branch of the $\choice$ starts with a protocol call in which that role also participates. However, this cannot happen if any branch starts with a labeled message exchange, as it is invalid for a role to send a message to itself.\\
 
@@ -984,11 +1196,11 @@ We extend the definition of projection for $\choice$ for the case where the proj
 
     \centering
 
-    $T_1\ \bigsqcup\ T_2\ =\ T_1 \quad \text{if}\;\ T_1\ =\ T_2$\\[15pt]
+    $\mathit{T_1}\ \bigsqcup\ \mathit{T_2}\ =\ \mathit{T_1} \quad \; \mathit{if}\ \mathit{T_1}\ =\ \mathit{T_2}$\\[17pt]
 
-    $\choice\ \at\ B\ \{\mathtt{RECV\_FROM}(B)_i;\ T_i\}_\varinset{i}{I}\ \bigsqcup\ \choice\ \at\ B\ \{\mathtt{RECV\_FROM}(B)_j;\ T'_j\}_\varinset{j}{J}\ =$\\[5pt]
-    $\choice\ \at\ B\ \{\mathtt{RECV\_FROM}(B)_i;\ T_i\}_\varinset{i}{I\;\setminus\;J}\ \bigcup\ \{\mathtt{RECV\_FROM}(B)_j;\ T'_j\}_\varinset{j}{J\;\setminus\;I}\ \bigcup$\\
-     $\{\mathtt{RECV\_FROM}(B)_k;\ T_k\ \bigsqcup\ T'_k\}_\varinset{k}{I\;\cap\;J}$\\[13pt]
+    $\choice\ \at\ \mathit{B}\ \{\mathtt{RECV\_FROM}(\mathit{B})_i;\ \mathit{T_i}\}_\varinset{i}{I}\ \bigsqcup\ \choice\ \at\ \mathit{B}\ \{\mathtt{RECV\_FROM}(B)_j;\ \mathit{T'_j}\}_\varinset{j}{J}\ =$\\[5pt]
+    $\choice\ \at\ \mathit{B}\ \{\mathtt{RECV\_FROM}(\mathit{B})_i;\ T_i\}_\varinset{i}{I\;\setminus\;J}\ \bigcup\ \{\mathtt{RECV\_FROM}(\mathit{B})_j;\ \mathit{T'_j}\}_\varinset{j}{J\;\setminus\;I}\ \bigcup$\\
+     $\{\mathtt{RECV\_FROM}(\mathit{B})_k;\ \mathit{T_k}\ \bigsqcup\ \mathit{T'_k}\}_\varinset{k}{I\;\cap\;J}$\\[17pt]
 
     % $\rec\ t\ \{T_1\}\ \bigsqcup\ \rec\ t\ \{T_2\}\ =\ \rec\ t\ \{T_1\ \bigsqcup\ T_2\}$\\[13pt]
 
@@ -996,16 +1208,25 @@ We extend the definition of projection for $\choice$ for the case where the proj
 
     % $\scrend\ \bigsqcup\ \scrend\ =\ \scrend$\\[13pt]
 
-     $T_1\ \bigsqcup\ T_2$ is undefined otherwise\\[7.5pt]
+     $\mathit{T_1}\ \bigsqcup\ \mathit{T_2}$ \ \ \textit{is undefined otherwise}\\[7.5pt]
 
     \caption{Definition of the full merge operator}
     \label{fullmerge}
 \end{figure}
 
 Two local types can always be merged if they are the same type. Two $\choice$ constructs can be merged if the same role is making the choice, and the first interaction in every branch is the receiving of a different message (invitation or labeled message) from that role. The merged type is a $\choice$ which combines the branches from both types. The branches which do not overlap between the two $\choice$ constructs can remain the same, but the branches where the first received message is common to both of them must be recursively merged to produce a new type. To reduce the number of cases to consider in the definition of the merge operator we implicitly use the equivalence between a $\choice$ with a single branch and the interactions of that branch without the $\choice$: $\choice\ \at\ R\ \{T\}\ \equiv\ T$.\\
-
-The projection of the $\calls$ construct is very similar to the projection of the protocol call in the original paper\cite{nestedprotocols}, and it considers the same 4 cases. When the projected role is making a call, it must send all the invitations to the other participants, potentially including itself. It must also send external invitations to the new dynamic participants which will take part in the subsession, if any. If there are no dynamic participants, then the $\create$ construct can be omitted. If the projected role is taking part in the subsession, then it must also accept the invitation to the appropriate role in the nested protocol from the caller. If the projected role is neither the caller or a participant in the protocol call, then the protocol call can be ignored.
  
+% TODO: Find a better name
+\chapter{Code Generation}
+% Intro about approach
+\section{Project structure}
+\subsection{directory structure}
+\subsection{protocol}
+\subsection{roles}
+\subsection{messages}
+\subsection{invitations}
+\subsection{invitations}
+
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1043,7 +1264,7 @@ The projection of the $\calls$ construct is very similar to the projection of th
     Sent asynchronously. 
     Link to well-formed choice over synchronous channels, and allowing processes to proceed as soon as possible.
     
-    \item \textbf{Well-formed choice}: In order for a choice to be well-formed, all roles in the choice must receive a distinct/unique first message from an enabled participant. This choice message must be sent over a dedicated channel used only for this choice. As discussed previously, invitations are sent asynchronously. If there was a single channel to send \texttt{Msg2()} between \texttt{A} and \texttt{B}, then \texttt{B}, who doesn't participate in \texttt{NestedProto}, will be able to continue sending \texttt{Msg2()} after it sends the invitations for \texttt{NestedProto}. This means that there will be a race as to which message \texttt{A} will receive first, because \texttt{A} would be waiting to receive either the invitation for \texttt{NestedProto} or \texttt{Msg2()} \textit{on the same channel} which \texttt{B} used to send \texttt{Msg2()} in the first branch. If \texttt{Msg2()} were received first, then the protocol would be stuck in a deadlock, because \texttt{A} would mistakenly identify the second branch as the branch which \texttt{B} chose. Therefore, \texttt{A} would be stuck waiting for a message from \texttt{B} which would never come, since \texttt{B} would be waiting for \texttt{Msg3()} from \texttt{A}.
+    \item \textbf{Well-formed choice}: In order for a choice to be well-formed, all roles in the choice must receive a distinct/unique first message from an enabled participant. This choice message must be sent over a dedicated channel used only for this choice. As discussed previously, invitations are sent asynchronously. If there was a single channel to send \texttt{Msg2()} between \texttt{A} and \texttt{B}, then \texttt{B}, who does not participate in \texttt{NestedProto}, will be able to continue sending \texttt{Msg2()} after it sends the invitations for \texttt{NestedProto}. This means that there will be a race as to which message \texttt{A} will receive first, because \texttt{A} would be waiting to receive either the invitation for \texttt{NestedProto} or \texttt{Msg2()} \textit{on the same channel} which \texttt{B} used to send \texttt{Msg2()} in the first branch. If \texttt{Msg2()} were received first, then the protocol would be stuck in a deadlock, because \texttt{A} would mistakenly identify the second branch as the branch which \texttt{B} chose. Therefore, \texttt{A} would be stuck waiting for a message from \texttt{B} which would never come, since \texttt{B} would be waiting for \texttt{Msg3()} from \texttt{A}.
     
     Otherwise, if the channel used to receive the choice message is the same as a channel used to send a message in some branch, there might be a deadlock, as the non-choice message might be sent and received before the actual choice message for a different branch was received. This would cause the participant to think wrongly identify the execution branch which was chosen. For example, in Figure \ref{deadlock} if there weren't separate channels for Msg2() in the first branch and Msg2() in the the second branch then if channels were asynchronous.
     
@@ -1121,7 +1342,7 @@ local protocol NestedProto_X(self X, role Y) {
     
     \textbf{Global Types}
     \begin{itemize}
-        \item Allow nested protocols to be defined at the top level as well as nested within other global and nested protocols, before any of the protocol's interactions. However, restrict the order of the declarations. All nested protocols at the top level have to be defined before the global protocols. This doesn't affect the expressiveness of the language, it is just a structural limitation which simplified parsing. 
+        \item Allow nested protocols to be defined at the top level as well as nested within other global and nested protocols, before any of the protocol's interactions. However, restrict the order of the declarations. All nested protocols at the top level have to be defined before the global protocols. This does not affect the expressiveness of the language, it is just a structural limitation which simplified parsing. 
         \item Use "nested protocol" header to define a nested protocol
         \item Split the roles in a nested protocol's role declaration into two to distinguish dynamic from non-dynamic participants 
         \item Add new syntax for calling nested protocols: <role> calls <proto>(R1, ..., RN);

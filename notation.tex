@@ -33,11 +33,27 @@
 
 \newcommand{\project}{\projectenv{Env}}
 \newcommand{\projectenv}[1]{\downarrow_A^{#1}}
-\newcommand{\roles}[2]{#1_1,\ ...\ ,\ #1_#2}
-\newcommand{\rolessig}[2]{\role\ #1_1,\ ...\ ,\ \role\ #1_#2}
+\newcommand{\roles}[2]{\mathit{#1_1},\ ...\ ,\ \mathit{#1_#2}}
+\newcommand{\rolessig}[2]{\role\ \mathit{#1_1},\ ...\ ,\ \role\ \mathit{#1_#2}}
 \newcommand{\scrmessage}[2]{\mathtt{#1}(\mathtt{#2})}
 \newcommand{\varinset}[2]{{#1 \in #2}}
 
+\newcommand{\choiceG}[4]{\choice\ \at\ \mathit{#1}\ \{\,\mathit{#2}_{#3}\,\}_{\varinset{#3}{#4}}}
+\newcommand{\messageG}[4]{\scrmessage{#1}{#2}\ \from\ \mathit{#3}\ \scrto\ \mathit{#4}}
+\newcommand{\recG}[2]{\rec\ \mathit{#1}\ \{\,\mathit{#2}\,\}}
+\newcommand{\continueG}[1]{\continue\ \mathit{#1}}
+\newcommand{\callsG}[3]{\mathit{#1}\ \calls\ \mathit{#2}(\roles{#3}{n})}
+\newcommand{\doG}[2]{\scrdo\ \mathit{#1}(\roles{#2}{n})}
+\newcommand{\contG}[2]{#1;\ \mathit{#2}}
+
+\newcommand{\choiceL}[4]{\choice\ \at\ \mathit{#1}\ \{\,\mathit{#2}_{#3}\,\}_{\varinset{#3}{#4}}}
+\newcommand{\messageFromL}[3]{\scrmessage{#1}{#2}\ \from\ \mathit{#3}}
+\newcommand{\messageToL}[3]{\scrmessage{#1}{#2}\ \scrto\ \mathit{#3}}
+\newcommand{\recL}[2]{\rec\ \mathit{#1}\ \{\,\mathit{#2}\,\}}
+\newcommand{\continueL}[1]{\continue\ \mathit{#1}}
+\newcommand{\inviteL}[2]{\invite(\roles{#1}{n})\ \scrto\ \mathit{#2}}
+\newcommand{\createL}[2]{\create(\rolessig{#1}{m})\ \scrin\ \mathit{#2}}
+\newcommand{\acceptL}[4]{\accept\ \mathit{#1}(\roles{#2}{n};\ \scrnew\ \roles{#3}{m})\ \from\ \mathit{#4}}
 \lstset{frame=tb,
   language=Java,
   aboveskip=3mm,
@@ -62,7 +78,7 @@
 
 \lstdefinelanguage{Scribble}{
   keywords={global, protocol, rec, role, choice, at, continue, do, from, to, var, if, in, while, do, else, case, break, calls, new, nested, accept, invite, create, local},
-  keywordstyle=\color{granate}\bfseries,
+  keywordstyle=\color{blue}\bfseries,
   ndkeywords={class, export, boolean, throw, implements, import, this},
   ndkeywordstyle=\color{mauve}\bfseries,
   identifierstyle=\color{black},
