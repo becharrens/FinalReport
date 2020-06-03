@@ -603,7 +603,7 @@ Figure \ref{nested_session_projection} shows the definition of projection for th
     \label{nested_session_projection}
 \end{figure}{}
 
-\subsection{Returning Values from Subprotocols}
+\subsection{Returning Values from Subprotocols}\label{nested-protocols-return-value}
 One limitation of the formulation expressed above is the inability of communication from a subsession back to the parent subsession. This means that it is impossible to express in a session type the relationship between a value calculated during a subsession and a value which a role might send after the nested protocol has ended. \\
 
 For example, in the Client-Proxy-Server protocol described in Figure \ref{nested_session_example}, the value the server returns is $ans$, but that value cannot be seen outside of the $Contact$ subprotocol, so the proxy (middle) can only return $ans_0$ after completing the call to $Contact$. However, there are no guarantees that these two values are the same. The paper proposes some further extensions to the syntax of session types in order to make the protocol end by returning a value to the role which initiated the call in order to be able to capture be able to return information from the subprotocol. \\
@@ -623,12 +623,11 @@ Nevertheless, the current theory will suffice in most scenarios, as the kinds of
 % In order for a global type to be well-formed, it must be projectable and well-kinded. Informally, well-kind which informally means that a mapping from all the identifiers in the global type to kinds can be found which 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
-\chapter{Extending Scribble with Nested Protocols}
+\chapter{Extending Scribble with Nested Protocols}\label{scribble-extensions-chapter}
 % TODO: Verify this after extending Scribble background
 In this chapter we present a version of the Scribble protocol language as presented in \cite{scribble}. We extend the syntax of both global and local types with contructs for representing nested protocols similar to the ones described the in the original paper\cite{nestedprotocols}. We introduce a precise definition of a protocol's scope - the protocols which are able to call a protocol, and extend the definition of well-formedness to take our syntax extensions into account. Finally, we extend the projection of Scribble global protocols with the new constructs we introduce.
 
-% TODO: Move to next chapter
-% The code generation approach is different from the one previously discussed, as the code is generated directly from the session types. We describe the Scribble language extensions and the code generation approach to produce Golang APIs.
+
 
 \section{Syntax Extensions}\label{scribble-extensions}
 
@@ -648,28 +647,56 @@ We have extended the definition of a Scribble module, which we described in Sect
 Although nested protocols could in theory be defined anywhere within a scope, for ease of parsing in the Scribble implementation and to provide more structured Scribble modules, we restrict the location where nested protocol can be declared. At the top-level, any nested protocols must be defined before the global protocol declarations, and within other protocols, they must be declared before any of the interactions. However, these restrictions do not impact the expressiveness of the implementation, as the order of the protocol declarations within a scope does not matter.\\
 
 \begin{figure}[!h]
-    {\centering
-    $\mathit{Module}\ ::=\ \mathit{N}\!*\ \mathit{P}+$\\[8pt]
+    \begin{center}
+        \begin{tabular}{l}
+            % \begin{math}
+            %     \begin{array}{@{}rcl}
+            %         \mathit{Module} & ::= & \mathit{N}\!*\ \mathit{P}+\\[7.5pt]
+            %         \mathit{PBody} & ::= & \mathit{N}\!*\ \mathit{G}
+            %     \end{array}
+            % \end{math}\\[18pt]
+            $\mathit{Module}\ ::=\ \mathit{N}\!*\ \mathit{P}+$\\[8pt]
 
-    $\mathit{PBody}\ ::=\  \mathit{N}\!*\ \mathit{G}$\\[8pt]
+            $\mathit{PBody}\ ::=\  \mathit{N}\!*\ \mathit{G}$\\[8pt]
 
-    $\mathit{N}\ ::=\ \nested\ \protocol\ \mathit{pro}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\;\mathit{PBody}\;\}$\\[8pt]
+            $\mathit{N}\ ::=\ \nested\ \protocol\ \mathit{pro}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\;\mathit{PBody}\;\}$\\[8pt]
+            
+            \begin{math}
+                \begin{array}{@{}rcl}
+                    \mathit{P} & ::= & \scrglobal\ \protocol\ \mathit{pro}(\rolessig{A}{n})\ \{\;\mathit{PBody}\;\}\\[5pt]
+                    \mathit{G} & ::= &\\[2.75pt]
+                        &   | & \choice\ \at\ \mathit{A}\ \{\;\mathit{G_1}\;\}\ \scror\ ...\ \scror\ \{\;\mathit{G_n}\;\} \\[2.75pt]
+                        &   | & \scrmessage{a}{S}\ \from\ \mathit{A}\ \scrto\ \mathit{B};\ \mathit{G} \\[2.75pt]
+                        &   | & \rec\ \mathit{t}\ \{\;G\;\} \\[2.75pt]
+                        &   | &  \continue\ \mathit{t} \\[2.75pt]
+                        &   | & \scrdo\ \mathit{pro}(\roles{A}{n});\ \mathit{G} \\[2.75pt]
+                        &   | &  \mathit{A}\ \calls\ \mathit{pro}(\roles{A}{n});\ G\\[2.75pt]
+                        &   | & \scrend \\[2.75pt]
+                \end{array}
+            \end{math}
+        \end{tabular}
+    \end{center}
+    % $\mathit{Module}\ ::=\ \mathit{N}\!*\ \mathit{P}+$\\[8pt]
 
-    $\mathit{P}\ ::=\ \scrglobal\ \protocol\ \mathit{pro}(\rolessig{A}{n})\ \{\;\mathit{PBody}\;\}$\\[8pt]
+    % $\mathit{PBody}\ ::=\  \mathit{N}\!*\ \mathit{G}$\\[8pt]
 
-    \begin{center}$
-        \begin{array}{rcl}
-            \mathit{G} & ::= &\\[2.75pt]
-                &   | & \choice\ \at\ \mathit{A}\ \{\;\mathit{G_1}\;\}\ \scror\ ...\ \scror\ \{\;\mathit{G_n}\;\} \\[2.75pt]
-                &   | & \scrmessage{a}{S}\ \from\ \mathit{A}\ \scrto\ \mathit{B};\ \mathit{G} \\[2.75pt]
-                &   | & \rec\ \mathit{t}\ \{\;G\;\} \\[2.75pt]
-                &   | &  \continue\ \mathit{t} \\[2.75pt]
-                &   | & \scrdo\ \mathit{pro}(\roles{A}{n});\ \mathit{G} \\[2.75pt]
-                &   | &  \mathit{A}\ \calls\ \mathit{pro}(\roles{A}{n});\ G\\[2.75pt]
-                &   | & \scrend \\[2.75pt]
-        \end{array}
-    $\end{center}
-    }
+    % $\mathit{N}\ ::=\ \nested\ \protocol\ \mathit{pro}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\;\mathit{PBody}\;\}$\\[8pt]
+
+    % $\mathit{P}\ ::=\ \scrglobal\ \protocol\ \mathit{pro}(\rolessig{A}{n})\ \{\;\mathit{PBody}\;\}$\\[8pt]
+
+    % \begin{center}$
+    %     \begin{array}{rcl}
+    %         \mathit{G} & ::= &\\[2.75pt]
+    %             &   | & \choice\ \at\ \mathit{A}\ \{\;\mathit{G_1}\;\}\ \scror\ ...\ \scror\ \{\;\mathit{G_n}\;\} \\[2.75pt]
+    %             &   | & \scrmessage{a}{S}\ \from\ \mathit{A}\ \scrto\ \mathit{B};\ \mathit{G} \\[2.75pt]
+    %             &   | & \rec\ \mathit{t}\ \{\;G\;\} \\[2.75pt]
+    %             &   | &  \continue\ \mathit{t} \\[2.75pt]
+    %             &   | & \scrdo\ \mathit{pro}(\roles{A}{n});\ \mathit{G} \\[2.75pt]
+    %             &   | &  \mathit{A}\ \calls\ \mathit{pro}(\roles{A}{n});\ G\\[2.75pt]
+    %             &   | & \scrend \\[2.75pt]
+    %     \end{array}
+    % $\end{center}
+    % }
     \caption{Syntax for Scribble module with nested protocols}
     \label{scribble-nested-syntax-global}
 \end{figure}
@@ -706,7 +733,7 @@ A formal specification of our proposed syntax for Scribble modules with nested p
 \begin{itemize}
     \item The $\nested$ keyword can be used to define protocols with dynamic participants. Dynamic participants are separated from regular participants by a $\scrnew$ keyword in the protocol declaration. However, nested protocols need not have dynamic participants, in which case the latter part of the declaration can be omitted. When a protocol is defined within another protocol, it restricts the scope where it can be used, much like defining a nested function in a programming language. We also allow shadowing of protocol names: if you redefine a protocol in an inner scope, then it will override the previous definition in that scope and all its subscopes.
     \item The $\calls$ construct introduces a subsession, where a role calls a nested protocol, inviting a set of roles to carry out the interactions of the nested protocol. In a $\calls$ construct the dynamic participants of the nested protocol are omitted - it is only necessary to specify which existing roles which be participating, as the remaining roles will be dynamically created.
-    \item We modify the semantics of the $\scrdo$ construct, which previously resulted in expanding the interactions of the called protocol, to instead create a subsession. It's semantics are equivalent to a $\calls$ construct, where the first partipant in the protocol is treated as the caller. However, we restrict the use of the $\calls$ construct to only call nested protocols and the $\scrdo$ construct to call global protocols. 
+    \item We modify the semantics of the $\scrdo$ construct, which previously resulted in expanding the interactions of the called protocol, to instead create a subsession. Its semantics are equivalent to a $\calls$ construct, where the first partipant in the protocol is treated as the caller. However, we restrict the use of the $\calls$ construct to only call nested protocols and the $\scrdo$ construct to call global protocols. 
     \item The distinction between global and nested protocols is important, and needs to be verified to ensure that any protocol call used the correct construct. Moreover, protocol calls need to be verified to ensure that the call matches the signature of the protocol which is in scope, as protocol declarations with the same protocol name in different scopes may involve a different number of participants.
     \item As before, the $\scrend$ construct can be omitted when writing down protocol declarations.
 \end{itemize}
@@ -776,7 +803,7 @@ After extending the syntax for Scribble global protocols we also had to modify t
         \begin{tabular}{l}
             $\mathit{L}\ ::=\ \scrlocal\ \protocol\ \mathit{A@pro}(\rolessig{A}{n};\ \scrnew\ \rolessig{B}{m})\ \{\;T\;\}$ \\\\
             \begin{math}
-                \begin{array}{rcl}
+                \begin{array}{@{}rcl}
                     \mathit{RecvMsg} & ::= & \\[2.75pt]
                      & | & \messageFromL{a}{S}{B}\\[2.75pt]
                      & | & \acceptL{C@pro}{A}{B}{A}\\\\
@@ -895,7 +922,7 @@ The first step in the algorithm is to aggregate the information from the protoco
 
 Once we have all the information about the top-level scope, we can proceed to recursively rename the interactions of all the protocols, aggregating all the resulting protocols in a single set. In order to update the interactions of a protocol, we must first update both the scope and protocol name environments with the nested protocol declarations inside the current protocol. The procedure for how this can be done is shown in the function \texttt{rename\_nested\_protocols} in Figure \ref{renaming-interactions}. We first generate a new unique name for each of the protocols and add it to the protocol name environment. The scope environment is updated by creating/modifying the mapping for the protocol's old name so that it refers to the new name. We also update the declarations of the nested protocols with their new unique names here. Once both environments have been updated, we recursively rename the interactions of each of the nested protocols and store them in the result set. Finally, we update the protocol names in the current protocol's interactions using the scope environment and add the protocol with its new interactions to the result set.\\
  
-The procedure we have just described is implemented in the \texttt{\seqsplit{rename\_and\_flatten\_protocols}} function in Figure \ref{renaming-module}. We need to return the updated protocol name environment as well as the set of renamed protocols to ensure that the protocol names we generate are unique. Otherwise, clashes could occur between protocols defined inside different nested protocols. However, the scope environment does not contain any useful information outside the current scope, so it can be ignored once the protocol interactions' have been updated. \\
+The procedure we have just described is implemented in the \texttt{\seqsplit{rename\_and\_flatten\_protocols}} function in Figure \ref{renaming-module}. We need to return the updated protocol name environment as well as the set of renamed protocols to ensure that the protocol names we generate are unique. Otherwise, clashes could occur between protocols defined inside different nested protocols. However, the scope environment does not contain any useful information outside the current scope, so it can be ignored once the protocol's interactions have been updated. \\
 
 Renaming a protocol's interactions simply requires recursively traversing the global type, as shown in the \texttt{rename\_protocol\_calls} function in Figure \ref{renaming-interactions}. The only interactions which change are the global protocol calls and nested protocol calls. In order to treat both types of calls in the same way, global protocol calls are converted explicitly to the $\calls$ construct with the first participant initiating the call. As global protocol names were not changed, the protocol name in the call remains the same. On the other hand, updating nested protocol calls requires looking up the unique protocol name corresponding to the protocol being called in the scope environment and building a new $\calls$ construct with it.\\
 
@@ -1126,11 +1153,11 @@ The projection of the $\calls$ construct is very similar to the projection of th
 
             % $\quad \quad |\ \mathit{R}\ \calls\ \mathit{P}(\roles{A}{n})$\\[7pt]
 
-            $\mathtt{RECV\_FROM}(\mathit{R})\ =$\\
+            % $\mathtt{RECV\_FROM}(\mathit{R})\ =$\\
 
-            $\quad \quad |\ \scrmessage{a}{S}\ \from\ \mathit{R}$\\
+            % $\quad \quad |\ \scrmessage{a}{S}\ \from\ \mathit{R}$\\
 
-            $\quad \quad |\ \accept\ \mathit{D@P}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ \mathit{R}$\\[7pt]
+            % $\quad \quad |\ \accept\ \mathit{D@P}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ \mathit{R}$\\[7pt]
 
             $R_1 = R_2 \implies \mathtt{IS\_MSG\_FROM}(\,R_2,\ \contG{\messageG{a}{S}{R_1}{C}}{G}\;)$\\[7pt]
 
@@ -1289,14 +1316,165 @@ The resulting merged type in this case is a $\choice$ which combines the branche
 % TODO: Find a better name
 \chapter{Code Generation}
 % Intro about approach
-\section{Project structure}
-\subsection{directory structure}
-\subsection{protocol}
-\subsection{roles}
-\subsection{messages}
-\subsection{invitations}
-\subsection{invitations}
 
+% TODO: Move to next chapter
+% The code generation approach is different from the one previously discussed, as the code is generated directly from the session types. We describe the Scribble language extensions and the code generation approach to produce Golang APIs.
+In this chapter we describe our approach towards implementing Golang APIs for nested protocols defined in the Scribble protocol description language. 
+
+\textbf{TODO: intro}
+% We describe how the protocol implementation is structure and how it can be integrated into a 
+
+% Our code generation approach is slighlty different from the normal Scribble pipeline which was described in Section \ref{Scribble}. We do not generate a communication finite state machine from the local protocols of each of the protocols participants, but rather generate the implementation of each of the participants directly 
+
+\section{Code Generation Approach}
+Our code generation approach is slightly different from the one normally used in Scribble, which we described previously in Section \ref{Scribble}. We do not generate a communication finite state machine (CFSM) from the local protocol of each of the roles, but rather generate code directly from the local type. The main obstacle in creating a CFSM is that it is not possible to encode properly nested sessions using a CFSM. In order to do this, we would need to create some kind of Stacked CFSM which would keep track of the stack of protocol calls in order to know which state to return to after the protocol call had finished. Compared to this, generating code directly from the local type is simpler, and it also allows us to design a scheme which directly encodes the behaviour of the local type into the Go programming language. We describe this scheme in Section \ref{local-protocol-codegen}.
+
+\subsection{Implementation Design Overview}
+Here we provide a high-level description of the main components which we have used in implementation of nested protocols. A more detailed breakdown of each each component and how we have structured them is given in Section \ref{project-structure}. \\
+
+When coming up with the design of the implementation of nested protocols, we wanted the approach to be as simple and intuitive to use as possible. Because our target language was Golang, we wanted to take advantage of the in-built concurrency primitives of the language: shared-memory channels and goroutines.\\
+
+In our implementation, participants execute in parallel as different goroutines, and the dynamic participants in nested protocols are created as new goroutines every time a protocol call is made. All communications between participants are carried out over channels, and we create structs for the different kinds of messages, and to aggregate all the channels needed by the roles to send the messages and invitations during their execution.\\
+
+% TODO: Cite for callbacks approach
+When generating the implementation of the role, we also generate and interface which contains the signatures of different methods which are called from the role's implementation. This allows the user to define the protocol's behaviour without modifying the implementation of the protocol which is automatically generated. An instance of the interface is used to maintain the role's state throughout the protocol by calling the interface's methods. These callbacks can provide new information which was received, such as a received labeled message, or allow the user to provide input needed for the execution, such as producing the message which will be sent or deciding which branch of a $\choice$ to follow. This approach using callbacks has been used other implementations of Scribble such as [\textbf{TODO}].\\
+
+The implementation of a role is generated as a self-contained function, which only contains the interactions defined in the local protocol. Calls to nested protocols involve an initial setup phase which is initiated by the role which caller of the protocol. During this setup, all the invitations are sent and the dynamic roles are initialised. In our implementation, invitations are structs containing the channels that the roles need to carry out the interactions of the role they are accepting to undertake, as well as the channels they will need in order to initiate and participate any protocol calls as their new role. Once the invitations are sent, a role participating in the protocol call simply needs to accept their invitation, create the callbacks environment for their new role and then call the function which implements the behaviour of that role.\\
+
+In our implementation, we also attempts to tackle the problem of returning information from a protocol call that was outlined in the original paper\cite{nestedprotocols}, and we describe in Section \ref{nested-protocols-return-value}. In order to solve this problem, we introduce result structs for every non-dynamic role of each protocol. The function implementing the behaviour of these roles will return its corresponding result struct, which can be aggregated into the state of the caller through a callback. The result struct can be generated from a role's state, and it is returned by the last callback which is called in the implementation: \texttt{Done()}, which signifies that the protocol has finished executing. The user can fill the structs with whatever information it wants to bring out of the subsession.\\
+
+Although this return value is only the partial state of each role, and not a return value for the protocol as a whole, it is a simple mechanism which allows roles to retain part of their state after executing in a nested session without introducing any additional messages. This is already a massive improvement over not being able to retain any information at all. However, this solution is not fully satisfactory for the entry-point protocol, which should only be called once to setup all the initial roles and produce a single result for that protocol. In order to solve this problem we propose a solution which is to aggregate the results of all the roles in a single state which the user can access. We create an interface which accepts the result of each of the initial roles in the entry-point protocol, allowing the user to define an implementation of the interface which aggregates all these return values in a useful way. This solution is not ideal, and we will  continue discuss this part of the design and its limitations in Section \ref{entry-point}.
+
+\section{Implementation Restrictions}\label{implementation-restrictions}
+In Chapter \ref{scribble-extensions-chapter} we have described the Scribble syntax for defining protocols with nested protocols. Our Scribble extensions allow the user to define complex dependency graphs between protocols with mutual recursion, to shadow definitions of nested protocols with the same name in different scopes, while placing very few restrictions with regards to how things should be named.\\
+
+Translating the declaration of a protocol defined in a language which gives the user so much freedom about how things are named and structured to a programming language with stricter restrictions like Golang is a great challenge. We have tried to come up with a design for the implementation which is simple and easy to use, but in order to do so we have had to place a set of small restrictions on the user when defining the protocols in order to generate their implementation. However, the framework will only try to enforce these restrictions when trying to generate the Golang implementation - these checks will not be made, for instance, if the user only wants to display the projection of a protocol.\\
+
+\subsection{Code Organisation in Golang}
+
+% TODO: Move these things around
+Golang programs are organised into packages, which are a collection of source files which are compiled together. Functions, types, structs and constants defined in a source files are visible to all the other source files in the same package\cite{godocs}. This means that generating two of these constructs with the same name in the same package will produce an error, even if the declarations are in different source files. Moreover, Golang uses capitalisation in order to determine the visibility of the constructs declared within a package - if they start with a capital letter then they can be accessed outside the package, otherwise they can only be accessed within the package.\\
+
+It is invalid to have cyclic import dependencies between different packages in a codebase, but there are different strategies for solving this issue: from placing the files which depend on one another in the same package to declaring interfaces to remove the coupling between the implementation of the packages.\\
+
+By convention, package and source file names tend to be short, single-word names which are all lowercased, and it is not possible to define two packages with the same name in the same directory. However, for multiword names, the convention is to use mixed caps rather than underscores: \texttt{MixedCaps} or \texttt{mixedCaps} rather than \texttt{snake\_case}.\\
+
+\subsection{Naming Restrictions}
+
+The lack of any enforceable naming conventions in Scribble makes it quite difficult come up with a consistent naming scheme for the different parts of the implementation. We aim to adhere to the existing naming conventions in Golang wherever possible. However, one of the main concerns while generating names for types and functions is to ensure there are no name clashes within the same package. In order to simplify the code generation process and produce meaningful names for the variables and constructs, we placed the following constraints on the names of the Scribble protocols, labeled messages and role names:
+
+\begin{itemize}
+    \item Protocol names must be unique when the case is ignored. Lowercased protocol names are used as package names, following the Golang naming convention. The uniqueness of protocol names we currently guarantee through the renaming process described in Section \ref{renaming} is currently case sensitive, which means two protocols \texttt{"P1"} and \texttt{"p1"} are considered to be different. This stronger uniqueness property is only required for code generation, so it is not necessary to enforce it at an earlier stage.
+    \item Message labels must be unique when capitalised within any protocol. We generate a new struct for every kind of labeled message using the message's label, and in order for the structs to be visible outside the package, they must be capitalised. It is therefore necessary to enforce this restriction. We also require labeled messages to have a consistent set of fields throughout their uses within a protocol, because we only define one struct per label name. It would be possible to generate a different structs for different uses of the same label, but it this might not be as clear to the user. We have decided instead to push the responsability of disambiguating labeled messages to the user, but it should not be hard for the user to work around this restriction.
+    \item Role names within a protocol must also be unique when case is ignored. This restriction is necessary, because we use role names to generate the names for many different structs and functions, and it makes it easier to generate unique names. The need for this restriction may be clearer once the naming scheme we use has been explained in Section \ref{naming-and-notation}.
+\end{itemize}
+
+While these restrictions will not enforce that our implementation follows the naming conventions in Golang, they are useful to ensure that the constructs we generate are unique within a package. Moreover, the naming scheme we have chosen, which we describe in Section \ref{naming-and-notation}, aims to produce meaningful names which closely resemble the declarations in the Scribble module so that the user can easily understand the generated codebase.
+
+\subsection{Package Organisation Restrictions}
+
+One of the big factors which conditioned our design was cyclic imports. Ideally, we would have wanted to achieve a highly-modular design with the implementation of every protocol within its own module. After all, modularity is one of the main features that nested protocols can provide. However, the ability to define mutually recursive protocols in Scribble means that any two protocols can potentially depend on one another, whether directly or indirectly. This means that their implementations will also be linked in some way, and therefore, it is not possible to define the whole implementation of each protocol within a different package, as the dependencies between protocols would cause cyclic imports.\\
+
+Our design therefore tries to split up the implementation of each protocol into different components, and keeps each of the source files for each of the components in different packages whereever possible. We describe the role of each of the components in Section \ref{directory-structure}.
+
+
+% \lstset{language=Go}
+% \begin{lstlisting}
+%     func x(A []int) {
+%         make(chan int)
+%     }
+% \end{lstlisting}
+
+% Golang Restrictions:
+% Package name conventions
+% Visibility through capitalisation
+% Package structure uniqueness (functions, structs, interfaces)
+% Cyclic imports
+
+% Naming restrictions:
+% protocol names must be unique when case is ignored
+% message names must be unique when capitalised
+%   - Also enforce consistent use of message label within each protocol for simplicity of implementation: message label will always have the same payload fields and types (it does not restrict the user very much)
+% message payload names must be unique when capitalised
+% role names must be unique when case is ignored
+
+
+\section{Naming Scheme and Notation}\label{naming-and-notation}
+Define text format for different unique name variables:
+
+role, 
+local protocol,
+protocol,
+payload fields,
+message label,
+choice enum,
+callback,
+environment,
+start env,
+protocol setup function,
+role implementation function
+
+message struct 
+channel struct
+invitation struct
+
+env, wg, roleChannels, inviteChannels - variables
+
+
+briefly mention naming scheme used in current implementation
+Which naming conventions in go we have not respected and why (hard to generate meaningful names :(  )
+
+
+\section{Project Structure}\label{project-structure}
+
+We now proceed to discussed how we have structured our implementation and how these different components work together to implement the protocol's behaviour. The implementation of a protocol is split across seven different packages which each encapsulate the different components. As far as possible, we have tried to keep the implementation of different protocols in separate packages. However, there are cases where this is not possible due to limitations in the programming language itself, such as cyclic imports. We will discuss these limitations in Section \ref{implementation-restrictions}.
+
+
+
+\subsection{Directory Structure}\label{directory-structure}
+
+
+% Overview of different packages and considerations for this design over others - eg. cyclic imports (cannot completely encapsulate all functionality of one module )
+
+A brief description of the purpose of each package is given below:
+\begin{itemize}
+    \item \texttt{messages/<protocol>}
+    \item \texttt{channels}
+    \item \texttt{messages}
+    \item \texttt{messages}
+    \item \texttt{messages}
+    \item \texttt{messages}
+    \item \texttt{messages}
+\end{itemize}
+
+roles/ - implentation of the behaviour of all the roles and the setup code for all the protocols.
+
+invitations/ - definition of structs containing channels to send 
+invitations/receive invitations
+
+channels/<protocol> - definition of structs for the different roles in the protocl, each containing all the channels they will need 
+
+messages/<protocol> - definition of structs containing the payload for the different messages in a protocol.
+
+protocol/ - entry point for the protocol implementation.
+
+results/protocol - declaration of the structs to return once a role finishes executing (except dynamic roles)
+
+callbacks/ - declaration of interfaces of the environments to allow the user to define the behaviour of the protocol.
+
+
+\subsection{messages}
+\subsection{channels}
+\subsection{invitations}
+\subsection{results}
+\subsection{callbacks}
+\subsection{protocol}\label{entry-point}
+\subsection{roles}
+\subsubsection{recursion}
+    
+
+\section{Code generation from Scribble local protocol to Golang}\label{local-protocol-codegen}
+% macros 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -1319,7 +1497,7 @@ The resulting merged type in this case is a $\choice$ which combines the branche
     
     (Nested) protocols can call each other, having mutually recursive chains of calls. This means that the implementations of the roles for different protocols cannot be in different packages, as doing so would cause a cyclic import error, because the implementation of roles in one package would call functions in the other package, and vice versa.
     
-    Similarly, the functionality for setting up a call to a nested protocol can't be in a separate package from the implementation of the roles for the protocols, as the setup will involve calling the implementation of the dynamic participants in the subprotocol, and some of the roles will rely on the setup function when preparing a call to the nested protocol. 
+    Similarly, the functionality for setting up a call to a nested protocol cannot be in a separate package from the implementation of the roles for the protocols, as the setup will involve calling the implementation of the dynamic participants in the subprotocol, and some of the roles will rely on the setup function when preparing a call to the nested protocol. 
     
     States in callbacks may also depend on one another, as a call to a nested protocol will involve creating the state for that role in the nested protocol from the 
     
@@ -1336,7 +1514,7 @@ The resulting merged type in this case is a $\choice$ which combines the branche
     
     \item \textbf{Well-formed choice}: In order for a choice to be well-formed, all roles in the choice must receive a distinct/unique first message from an enabled participant. This choice message must be sent over a dedicated channel used only for this choice. As discussed previously, invitations are sent asynchronously. If there was a single channel to send \texttt{Msg2()} between \texttt{A} and \texttt{B}, then \texttt{B}, who does not participate in \texttt{NestedProto}, will be able to continue sending \texttt{Msg2()} after it sends the invitations for \texttt{NestedProto}. This means that there will be a race as to which message \texttt{A} will receive first, because \texttt{A} would be waiting to receive either the invitation for \texttt{NestedProto} or \texttt{Msg2()} \textit{on the same channel} which \texttt{B} used to send \texttt{Msg2()} in the first branch. If \texttt{Msg2()} were received first, then the protocol would be stuck in a deadlock, because \texttt{A} would mistakenly identify the second branch as the branch which \texttt{B} chose. Therefore, \texttt{A} would be stuck waiting for a message from \texttt{B} which would never come, since \texttt{B} would be waiting for \texttt{Msg3()} from \texttt{A}.
     
-    Otherwise, if the channel used to receive the choice message is the same as a channel used to send a message in some branch, there might be a deadlock, as the non-choice message might be sent and received before the actual choice message for a different branch was received. This would cause the participant to think wrongly identify the execution branch which was chosen. For example, in Figure \ref{deadlock} if there weren't separate channels for Msg2() in the first branch and Msg2() in the the second branch then if channels were asynchronous.
+    Otherwise, if the channel used to receive the choice message is the same as a channel used to send a message in some branch, there might be a deadlock, as the non-choice message might be sent and received before the actual choice message for a different branch was received. This would cause the participant to think wrongly identify the execution branch which was chosen. For example, in Figure \ref{deadlock} if there were not separate channels for Msg2() in the first branch and Msg2() in the the second branch then if channels were asynchronous.
     
 \begin{figure}[h]
 \centering
@@ -1397,7 +1575,7 @@ local protocol NestedProto_X(self X, role Y) {
     
     - (Provisional) Callbacks using interfaces (structs which maintain state). Nested role may return result to caller function - this \textbf{will} \textbf{probably} be \textbf{removed}.
     
-    - Probably don't allow protocols which don't have at least two participants??
+    - Probably do not allow protocols which do not have at least two participants??
     
     TODO: More elaborate examples and translation scheme from scribble to go. Possibly formalize Scribble projection as well.
     
