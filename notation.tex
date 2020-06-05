@@ -71,7 +71,7 @@
   tabsize=3,
   frame=single,
 }
-\definecolor{dkgreen}{rgb}{0,0.6,0}
+\definecolor{dkgreen}{rgb}{0.078, 0.580, 0.086}
 \definecolor{gray}{rgb}{0.5,0.5,0.5}
 \definecolor{mauve}{rgb}{0.58,0,0.82}
 \definecolor{granate}{rgb}{0.68, 0.02, 0.55}
@@ -105,3 +105,60 @@
   morestring=[b]',
   morestring=[b]"
 }
+
+
+% NOTATION
+\definecolor{purple}{rgb}{0.415, 0.035, 0.827}
+\definecolor{dkorange}{rgb}{0.870, 0.427, 0.007}
+% \definecolor{dkred}{rgb}{0.878, 0.094, 0}
+\definecolor{dkred}{rgb}{0.8, 0.019, 0}
+\definecolor{lightblue}{rgb}{0.047, 0.752, 0.811}
+\definecolor{dkyellow}{rgb}{0.678, 0.654, 0}
+
+
+% GO KWDS
+\newcommand{\kwd}[1]{{\color{mauve} \texttt{#1}}}
+\newcommand{\gotype}{\kwd{type}}
+\newcommand{\gostruct}{\kwd{struct}}
+\newcommand{\gointerface}{\kwd{interface}}
+\newcommand{\gogo}{\kwd{go}}
+\newcommand{\gofunc}{\kwd{func}}
+\newcommand{\gochan}{\kwd{chan}}
+% GO KWDS
+
+% Reserved words
+\newcommand{\protocolname}[1]{{\mathit{#1}}}
+\newcommand{\rolename}[1]{{\mathit{#1}}}
+\newcommand{\localprotocol}[2]{{#1@#2}}
+\newcommand{\localprotocolname}[2]{{\mathit{#2}\_\mathit{#1}}}
+
+% NOTATION
+% Variables
+\newcommand{\varname}[1]{{\mathtt{#1}}}
+
+% Types
+\newcommand{\typename}[1]{{\color{dkorange}\mathtt{#1}}}
+
+% Directory structure
+\newcommand{\filename}[1]{{\color{dkgreen} \mathtt{#1.go}}}
+\newcommand{\dirname}[1]{{\color{dkgreen} \mathtt{#1}/}}
+\newcommand{\pkgname}[1]{{\color{dkgreen} \mathtt{#1}}}
+
+% Structs
+\newcommand{\structname}[1]{{\color{dkred} \mathit{#1}}}
+\newcommand{\structfield}[1]{{\color{dkred} \mathtt{#1}}}
+
+% Functions and Interfaces
+\newcommand{\functionname}[1]{\color{dkyellow} \mathtt{#1}}
+\newcommand{\interfacename}[1]{\color{dkyellow} \mathit{#1}}
+
+% Enums
+\newcommand{\enumtype}[1]{\color{lightblue} \mathit{#1}}
+\newcommand{\enumvalue}[1]{\color{lightblue} \mathtt{#1}}
+
+% NOTATION
+
+% HELPER CMDS
+\newcommand{\payloaddecl}[3]{\structfield{#1_1}:\ \typename{#2_1},\ ...\ ,\ \structfield{#1_{#3}}:\ \typename{#2_{#3}}}
+\newcommand{\pkgstructaccess}[2]{\pkgname{#1}.\structname{#2}}
+% HELPER CMDS
