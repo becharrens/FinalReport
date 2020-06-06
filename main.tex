@@ -806,8 +806,8 @@ After extending the syntax for Scribble global protocols we also had to modify t
             \begin{math}
                 \begin{array}{@{}rcl}
                     \mathit{RecvMsg} & ::= & \\[2.75pt]
-                     & | & \messageFromL{a}{S}{B}\\[2.75pt]
-                     & | & \acceptL{C@pro}{A}{B}{A}\\\\
+                     & | & \messageFromL{a}{S}{B}\,;\\[2.75pt]
+                     & | & \acceptL{C@pro}{A}{B}{A}\,;\\\\
         
                     \mathit{T} & ::= &\\[2.75pt]
                       &   | & \choice\ \at\ \mathit{A}\ \{T_1\}\ \scror\ ...\ \scror\ \{T_n\} \\[2.75pt]
@@ -815,7 +815,7 @@ After extending the syntax for Scribble global protocols we also had to modify t
                       &   | &  \continue\ \mathit{t} \\[2.75pt]
                       &   | & \scrmessage{a}{S}\ \scrto\ \mathit{B};\ \mathit{T} \\[2.75pt]
                     %   &   | & \scrmessage{a}{S}\ \from\ \mathit{B};\ \mathit{T} \\[2.75pt]
-                      &   | & \mathit{RecvMsg};\ \mathit{T}\\[2.75pt]
+                      &   | & \mathit{RecvMsg}\ \mathit{T}\\[2.75pt]
                       &   | & \invite(\roles{A}{n})\ \scrto\ \mathit{pro}\,;\ \mathit{T} \\[2.75pt]
                       &   | & \create(\rolessig{B}{m})\ \scrin\ \mathit{pro}\,;\ \mathit{T}\\[2.75pt]
                     %   &   | & \accept\ \mathit{C@pro}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ \mathit{A}\,;\ \mathit{T}\\[2.75pt]
@@ -1164,9 +1164,9 @@ The projection of the $\calls$ construct is very similar to the projection of th
 
             $R_1 = R_2 \implies \mathtt{IS\_MSG\_FROM}(\,R_2,\ \contG{\callsG{R_1}{P}{A}}{G}\;)$\\[14pt]
 
-            $R_1 = R_2 \implies \mathtt{IS\_RECV\_FROM}(\,R_2,\ \messageFromL{a}{S}{R_1}\;)$\\[7pt]
+            $R_1 = R_2 \implies \mathtt{IS\_RECV\_FROM}(\,R_2,\ \messageFromL{a}{S}{R_1};\;)$\\[7pt]
 
-            $R_1 = R_2 \implies \mathtt{IS\_RECV\_FROM}(\,R_2,\ \acceptL{D@P}{A}{B}{R_1}\;)$\\[14pt]
+            $R_1 = R_2 \implies \mathtt{IS\_RECV\_FROM}(\,R_2,\ \acceptL{D@P}{A}{B}{R_1};\;)$\\[14pt]
 
             $\mathtt{FIRST\_RECEIVERS}(\,G\,)\ =$\\
 
@@ -1290,9 +1290,9 @@ We extend the definition of projection for $\choice$ for the case where the proj
 
     $\mathit{T_1}\ \bigsqcup\ \mathit{T_2}\ =\ \mathit{T_1} \quad \; \mathit{if}\ \mathit{T_1}\ =\ \mathit{T_2}$\\[17pt]
 
-    $\choice\ \at\ \mathit{B}\ \{\mathit{RecvMsg_i}\;;\ \mathit{T_i}\,\}_\varinset{i}{I}\ \bigsqcup\ \choice\ \at\ \mathit{B}\ \{\mathit{RecvMsg_j}\;;\ \mathit{T'_j}\,\}_\varinset{j}{J}\ =$\\[5pt]
-    $\choice\ \at\ \mathit{B}\ \{\mathit{RecvMsg_i}\;;\ \mathit{T_i}\,\}_\varinset{i}{I\;\setminus\;J}\ \bigcup\ \{\mathit{RecvMsg_j}\;;\ \mathit{T'_j}\,\}_\varinset{j}{J\;\setminus\;I}\ \bigcup$\\
-     $\{\mathit{RecvMsg_k}\;;\ \mathit{T_k}\ \bigsqcup\ \mathit{T'_k}\,\}_\varinset{k}{I\;\cap\;J}$\\[7.5pt]
+    $\choice\ \at\ \mathit{B}\ \{\mathit{RecvMsg_i}\ \;\mathit{T_i}\,\}_\varinset{i}{I}\ \bigsqcup\ \choice\ \at\ \mathit{B}\ \{\mathit{RecvMsg_j}\ \;\mathit{T'_j}\,\}_\varinset{j}{J}\ =$\\[5pt]
+    $\choice\ \at\ \mathit{B}\ \{\mathit{RecvMsg_i}\ \;\mathit{T_i}\,\}_\varinset{i}{I\;\setminus\;J}\ \bigcup\ \{\mathit{RecvMsg_j}\ \;\mathit{T'_j}\,\}_\varinset{j}{J\;\setminus\;I}\ \bigcup$\\
+     $\{\mathit{RecvMsg_k}\;\ \mathit{T_k}\ \bigsqcup\ \mathit{T'_k}\,\}_\varinset{k}{I\;\cap\;J}$\\[7.5pt]
 
     %  \textit{if} $\forall \varinset{i}{I}.\mathtt{IS\_RECV\_FROM}(\,B,\; \textit{RecvMsg_i}\,)\ \mathit{and}\ \forall \varinset{j}{J}.\mathtt{IS\_RECV\_FROM}(\,B,\; \mathit{RecvMsg_j}\,)$\\[17pt]
 
@@ -1330,7 +1330,7 @@ In this chapter we describe our approach towards implementing Golang APIs for ne
 \section{Code Generation Approach}\label{codegen-approach}
 Our code generation approach is slightly different from the one normally used in Scribble, which we described previously in Section \ref{Scribble}. We do not generate a communication finite state machine (CFSM) from the local protocol of each of the roles, but rather generate code directly from the local type. The main obstacle in creating a CFSM is that it is not possible to encode properly nested sessions using a CFSM. In order to do this, we would need to create some kind of Stacked CFSM which would keep track of the stack of protocol calls in order to know which state to return to after the protocol call had finished. Compared to this, generating code directly from the local type is simpler, and it also allows us to design a scheme which directly encodes the behaviour of the local type into the Go programming language. We describe this scheme in Section \ref{local-protocol-codegen}.
 
-\subsection{Implementation Design Overview}
+\subsection{Implementation Design Overview}\label{design-overview}
 Here we provide a high-level description of the main components which we have used in implementation of nested protocols. A more detailed breakdown of each each component and how we have structured them is given in Section \ref{project-structure}. \\
 
 When coming up with the design of the implementation of nested protocols, we wanted the approach to be as simple and intuitive to use as possible. Because our target language was Golang, we wanted to take advantage of the in-built concurrency primitives of the language: shared-memory channels and goroutines.\\
@@ -1676,6 +1676,61 @@ Every labelled message exchange in a protocol is carried out over a separte chan
 In Figure \ref{channel-struct-gen} we show what the struct generated by the scheme we have described would look like. Every field in the struct is generated from a labeled message exchange in the protocol's local type. The field names inside the struct that we generate must have unique names, but in our definition we assume that this is achieved in the implementation.
 
 \subsection{Package \texttt{invitations}}
+In this package we define the invitation structs for the roles in all the protocols defined in the Scribble module. All the invitation structs for the roles of a protocol are stored in one same file named after the protocol they belong to: $\filename{protocol}$. These files are all stored directly inside the package to avoid cyclic dependencies.\\
+
+As we discussed in Section \ref{design-overview}, in our implementation, invitations consist of two structs: the channel struct and the invitation struct for the role that the participant is going to undertake in a protocol call. These structs contain fresh channels that the role can use to communicate with the other participants in the subsession. For this reason, in order to send or receive an invitation two different channels are required.\\
+
+In our design we use different channels each time we send or receive an invitation. For every protocol call that a role initiates, we add two channels to the struct to send the invitations for each of the participants in the call. If the protocol only participates in the protocol call, then we add two channels to receive the invitations if the role is not the one initiating the protocol call. If the role is the one initiating that call, then it will be sending the invitations to itself over the channels created for sending the invitations, so there is no need to create any other channels.\\
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\mathit{Env\ =\ Env\,',\ protocol\,' \mapsto \{\roles{role\,'}{n};\ \roles{role\,''}{m}\}}$\\\\
+
+            $(\;\invite(\roles{role}{n})\ \scrto\ \mathit{protocol\,'};\;)\ \implies$\\[6pt]
+            $\gotype\ \structname{\localprotocol{role}{protocol}\_InviteChan}\ \gostruct\ \{$\\[3pt]
+            \begin{tabular}{lll}
+                \indent & $\dots$ & \\[9pt]
+                \indent & $\structfield{Invite\_role_1\_To\_\localprotocol{role'_1}{protocol'}}$\ &$\gochan\ \;\pkgstructaccess{protocol'\_channels}{role_1\!'\_Chan}$\\
+                \indent & $\structfield{Invite\_role_n\_To\_\localprotocol{role'_n}{protocol'}\_InviteChan}$\ &$\gochan\ \; \structname{\localprotocol{role_n\!'}{protocol\,'}\_InviteChan}$\\
+                \indent & $\dots$ & \\
+                \indent & $\structfield{Invite\_role_n\_To\_\localprotocol{role'_n}{protocol'}}$\ &$\gochan\ \;\pkgstructaccess{protocol'\_channels}{role_n\!'\_Chan}$\\
+                \indent & $\structfield{Invite\_role_n\_To\_\localprotocol{role'_n}{protocol'}\_InviteChan}$\ &$\gochan\ \; \structname{\localprotocol{role_n\!'}{protocol\,'}\_InviteChan}$\\[7pt]
+                \indent & $\dots$ & 
+            \end{tabular}\\
+            $\}$\\\\[5pt]
+
+
+            $\mathit{if\ role\ \neq\ role_0},\ then:$\\[6pt]
+            $(\;\accept\ \mathit{\localprotocol{role\,'_i\,}{protocol}\,'}(\roles{role}{n};\ \scrnew\ \roles{role\,''}{m})\ \from\ \mathit{role_0}\,;\;)\ \implies$\\[6pt]
+            $\gotype\ \structname{\localprotocol{role}{protocol}\_InviteChan}\ \gostruct\ \{$\\[3pt]
+            \begin{tabular}{lll}
+                \indent & $\dots$ & \\[9pt]
+                \indent & $\structfield{role_0\_Invite\_To\_\localprotocol{role'_i}{protocol'}}$\ &$\gochan\ \;\pkgstructaccess{protocol'\_channels}{role\,'_i\,\_Chan}$\\
+                \indent & $\structfield{role_0\_Invite\_To\_\localprotocol{role'_i}{protocol'}\_InviteChan}$\ &$\gochan\ \; \structname{\localprotocol{role\,'_i\,}{protocol\,'}\_InviteChan}$\\
+                [7pt]
+                \indent & $\dots$ & 
+            \end{tabular}\\
+            $\}$\\[6pt]
+            
+            $\mathit{otherwise\ no\ new\ fields\ are\ added}$
+            
+        \end{tabular}
+    \end{center}
+    \caption{Process for populating the invitation struct of role \textit{role} in protocol \textit{protocol}}
+    \label{invitation-struct-gen}
+\end{figure}
+
+We illustrate the process of how we add fields to a role's invitation struct using it's local type in Figure \ref{invitation-struct-gen}. We name the structs using the local protocol they are generated from in order to be able to clearly be able to identify them whenever they are used. The channel fields inside the struct are named differently depending on whether the channel is used for sending or receiving invitations. In the case where a role is sending itself an invitation, we name it following the scheme for channels used to send invitations.\\
+
+The channel used to send the channel struct for the new new role needs to refer to the struct defined inside the $\pkgname{channels}$ package. However, the type of the invitations struct is defined within the $\pkgname{invitations}$ package itself, so it is possible to access them directly. It would not be possible to move the declarations of each protocol into a different package, because it is possible for protocols to be mutually recursive, and trying to import the invitations structs could cause cyclic imports.
+
+
+
+
+% Sending invitation
+% receiving invitation
+% Invitaion to self
 
 \subsection{Package \texttt{results}}
 This package has a structure which is almost identical to the $\pkgname{messages}$ and $\pkgname{channels}$ packages. Each protocol has its own subpackage with a source file named $\filename{results}$ containing the result structs for the roles of that protocol.\\
