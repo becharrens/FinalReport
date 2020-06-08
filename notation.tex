@@ -130,6 +130,8 @@
 \newcommand{\gochan}{\kwd{chan}}
 \newcommand{\goconst}{\kwd{const}}
 \newcommand{\goiota}{\kwd{iota}}
+\newcommand{\godefer}{\kwd{defer}}
+\newcommand{\gopanic}{\kwd{panic}}
 % GO KWDS
 
 % Reserved words
@@ -173,6 +175,20 @@
 % NOTATION
 
 % HELPER CMDS
+\newcommand{\wg}{\varname{wg}}
+\newcommand{\rolechannels}{\varname{roleChannels}}
+\newcommand{\invitechannels}{\varname{inviteChannels}}
+\newcommand{\envparam}{\varname{env}}
 \newcommand{\payloaddecl}[3]{\structfield{#1_1}:\ \typename{#2_1},\ ...\ ,\ \structfield{#1_{#3}}:\ \typename{#2_{#3}}}
 \newcommand{\pkgstructaccess}[2]{\pkgname{#1}.\structname{#2}}
+\newcommand{\pkginterfaceaccess}[2]{\pkgname{#1}.\interfacename{#2}}
+\newcommand{\pkgfuncaccess}[2]{\pkgname{#1}.\functionname{#2}}
+\newcommand{\methodcall}[2]{\varname{#1}.\functionname{#2}}
+\newcommand{\assignment}[2]{\varname{#1}\ :=\ #2}
+\newcommand{\waitgroup}{\pkgstructaccess{sync}{WaitGroup}}
+\newcommand{\rolechantype}[2]{\pkgstructaccess{#2\_channels}{#1\_Chan}}
+\newcommand{\invitechantype}[2]{\pkgstructaccess{invitations}{\localprotocol{#1}{#2}\_InviteChan}}
+\newcommand{\envtype}[2]{\pkgstructaccess{callbacks}{\localprotocol{#1}{#2}\_Env}}
+\newcommand{\resulttype}[2]{\pkgstructaccess{#2\_results}{#1\_Result}}
+\newcommand{\roleimplparams}{\wg,\ \rolechannels,\ \invitechannels,\ \envparam}
 % HELPER CMDS

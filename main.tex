@@ -1,7 +1,7 @@
 \documentclass[12pt,twoside]{report}
 
 % some definitions for the title page
-\newcommand{\reporttitle}{Session-Typed Programming with Nested Protocols in Go}
+\newcommand{\reporttitle}{Nested Multiparty Session Programming in Go}
 \newcommand{\reportauthor}{Benito Echarren Serrano}
 \newcommand{\supervisor}{Prof. Nobuko Yoshida}
 \newcommand{\secondmarker}{Dr. Iain Phillips}
@@ -1315,7 +1315,7 @@ Two local types can always be merged if they are the same type. Two $\choice$ co
 The resulting merged type in this case is a $\choice$ which combines the branches from both types. The branches which do not overlap between the two $\choice$ constructs can remain the same, but the branches where the first received message is common to both of them must be recursively merged to produce a new type. To reduce the number of cases to consider in the definition of the merge operator we implicitly use the equivalence between a $\choice$ with a single branch and the interactions of that branch without the $\choice$: $\choice\ \at\ R\ \{T\}\ \equiv\ T$.\\
  
 % TODO: Find a better name
-\chapter{Code Generation}
+\chapter{Go Code Generation}
 % Intro about approach
 
 % TODO: Move to next chapter
@@ -1323,6 +1323,12 @@ The resulting merged type in this case is a $\choice$ which combines the branche
 In this chapter we describe our approach towards implementing Golang APIs for nested protocols defined in the Scribble protocol description language. 
 
 \textbf{TODO: intro}
+\begin{itemize}
+    \item pipeline for codegen
+    \item remove recursion - refer to roles pkg
+    \item we will discuss the different components we use for our implementation and how they work together to execute the behaviour of the different roles in the protocol correctly.
+\end{itemize}
+
 % We describe how the protocol implementation is structure and how it can be integrated into a 
 
 % Our code generation approach is slighlty different from the normal Scribble pipeline which was described in Section \ref{Scribble}. We do not generate a communication finite state machine from the local protocols of each of the protocols participants, but rather generate the implementation of each of the participants directly 
@@ -1335,13 +1341,13 @@ Here we provide a high-level description of the main components which we have us
 
 When coming up with the design of the implementation of nested protocols, we wanted the approach to be as simple and intuitive to use as possible. Because our target language was Golang, we wanted to take advantage of the in-built concurrency primitives of the language: shared-memory channels and goroutines.\\
 
-In our implementation, participants execute in parallel as different goroutines, and the dynamic participants in nested protocols are created as new goroutines every time a protocol call is made. All communications between participants are carried out over channels. We create structs for the different kinds of messages in a protocol, and store all the different structs needed by a role for all its message exchanges in a struct. Each role also has a struct containing all the channels it needs to send and receive invitations. Our invitations consist of two structs, the first one containing the channels that a participant will need to carry out the interactions of the role they will be undertaking, and the second one containing the channels that they will need in order to initiate and participate any protocol calls as their new role. \\
+In our implementation, participants execute in parallel as different goroutines, and the dynamic participants in nested protocols are created as new goroutines every time a protocol call is made. All communications between participants are carried out over \textbf{buffered channels}. This means that sends will only block once the buffer is full, and a receive will only block when the buffer is empty. We therefore try to make communication asynchronous. We create structs for the different kinds of messages in a protocol, and store all the different structs needed by a role for all its message exchanges in a struct. Each role also has a struct containing all the channels it needs to send and receive invitations. Our invitations consist of two structs, the first one containing the channels that a participant will need to carry out the interactions of the role they will be undertaking, and the second one containing the channels that they will need in order to initiate and participate any protocol calls as their new role. \\
 
 % TODO: Justify having one channel per interaction?
 Each channel that a role has will only be used once, regardless of whether it is used for sending or receiving a message or an invitation, which means that a role will have as many channels as the number of messages it sends and receives.\\
 
 % TODO: Cite for callbacks approach
-When generating the implementation of the role, we also generate an interface which contains the signatures of different methods which are called from the role's implementation. This allows the user to define the protocol's behaviour without modifying the implementation of the protocol which is automatically generated. An instance of the interface is used to maintain the role's state throughout the protocol by calling the interface's methods. These callbacks can provide new information which was received, such as a received labelled message, or allow the user to provide input needed for the execution, such as producing the message which will be sent or deciding which branch of a $\choice$ to follow. Similar approaches to this one using callbacks has been used in other implementations of Scribble such as [\textbf{TODO}].\\
+When generating the implementation of the role, we also generate an interface which contains the signatures of different methods which are called from the role's implementation. This allows the user to define the protocol's behaviour without modifying the implementation of the protocol which is automatically generated. An instance of the interface is used to maintain the role's state throughout the protocol by calling the interface's methods. These callbacks can provide new information which was received, such as a received labelled message, or allow the user to provide input needed for the execution, such as producing the message which will be sent or deciding which branch of a $\choice$ to follow. Similar approaches to this one using callbacks have been used in other implementations of Scribble such as \cite{scribble-callbacks}.\\
 
 The implementation of a role is generated as a self-contained function, which only contains the interactions defined in the local protocol. Calls to nested protocols involve an initial setup phase which is initiated by the role which is the caller of the protocol. During this setup, the invitations for all the roles are created: the new channels needed by all the roles are created and aggregated to create the channel and invitation structs for all of the roles. These structs are sent to all non-dynamic participants through their invitation channels. Dynamic participants also receive their channels, but they receive them directly when they are spawned as new goroutines which execute the functions corresponding to the role's implementation. Once the invitations are sent, a role participating in the protocol call simply needs to accept their invitation, create the callbacks environment for their new role and then call the function which implements the behaviour of that role.\\
 
@@ -1349,7 +1355,7 @@ In our implementation, we also attempt to tackle the problem of returning inform
 
 Although this return value is only the partial state of each role, not a return value for the protocol as a whole, it is a simple mechanism which allows roles to retain part of their state after executing in a nested session without introducing any additional messages. This is already a massive improvement over not being able to retain any information at all. However, this solution is not fully satisfactory for the entry-point protocol, which should only be called once to setup all the initial roles and produce a single result for that protocol. Our proposal to solve this problem is to aggregate the results of all the roles into a single state which the user can access outside of the protocol. We create an interface which accepts the result of each of the initial roles in the entry-point protocol, allowing the user to define an implementation of the interface which aggregates all these return values in a useful way. However, this solution is not ideal, and we will continue to discuss this part of the design and its limitations in Section \ref{entry-point}.\\
 
-When setting up the entry-point protocol, the process is very similar to the setup for a protocol call. All the channels for the roles must be created, but instead of receiving their channels as invitations, the roles execute as new goroutines which receive the channels as parameters directly. In order to synchronize the ending of the protocol, we use one of Golang's synchronization mechanisms: \texttt{sync.WaitGroup}. A wait group has an internal counter which specifies the number of pending jobs which should finish before resuming execution. The main thread waits on the waitgroup until all the goroutines of the initial participants finish executing. Every time a dynamic participant is created, the wait group's counter must be increased to ensure that execution does not continue before all the participants, including the dynamic participants, have finished executing.
+When setting up the entry-point protocol, the process is very similar to the setup for a protocol call. All the channels for the roles must be created, but instead of receiving their channels as invitations, the roles execute as new goroutines which receive the channels as parameters directly. In order to synchronize the ending of the protocol, we use one of Golang's synchronization mechanisms: \texttt{sync.WaitGroup}. A wait group has an internal counter which specifies the number of pending jobs which should finish before resuming execution. The main thread waits on the wait group until all the goroutines of the initial participants finish executing. Every time a dynamic participant is created, the wait group's counter must be increased to ensure that execution does not continue before all the participants, including the dynamic participants, have finished executing.
 
 \section{Implementation Restrictions}\label{implementation-restrictions}
 In Chapter \ref{scribble-extensions-chapter} we have described the Scribble syntax for defining protocols with nested protocols. Our Scribble extensions allow the user to define complex dependency graphs between protocols with mutual recursion, to shadow definitions of nested protocols with the same name in different scopes, while placing very few restrictions with regards to how things should be named.\\
@@ -1414,6 +1420,7 @@ In Section \ref{codegen-approach} we described from a high-level point of view h
     \item $\dirname{dir}$ - directory names
     \item $\pkgname{pkg\_name}$ - package names
     \item $\varname{var\_name}$ - variable names
+    \item $\mathtt{"str"}$ - string literal
     \item $\typename{type\_name}$ - Golang primitive types
     \item $\structname{struct\_name}$ - Struct names
     \item $\structfield{struct\_field}$ - Names of struct fields
@@ -1446,6 +1453,7 @@ The names we generate use different parts of the Scribble definition in order to
     \item $\mathit{payload\_field}$: This denotes the name of field inside the payload of a labelled message.
     
     \item $\mathit{payload\_type}$: This denotes type of a field inside the payload of a labelled message.
+    \item $\varname{roleChannels}$, $\varname{inviteChannels}$, $\varname{wg}$ and $\varname{env}$:\, These are special variable names which are used as parameters in the functions we generate to implement the behaviour of the roles.
 \end{itemize}
 
 However, the names we generate by embedding the names taken from the Scribble module do not follow the Golang naming convention of mixed caps. We use underscores to separate the parts we take from the protocol declaration from the other parts of the name instead of using mixed caps, as it is the simplest way to ensure that the names produced are readable, especially if the final name we produce places user-defined names side by side.
@@ -1609,7 +1617,7 @@ Some of the packages we have defined only define structs which are needed for th
 \begin{itemize}
     \item $\dirname{messages}\dirname{protocol\_pkg}$: Within each of these packages we define the structs for the different labelled messages which are exchanged in each protocol.
     \item  $\dirname{channels}\dirname{protocol\_pkg}$: Within each of these packages we define the structs which hold all the channels that each role in the protocol will need during its execution to communicate with the other roles.
-    \item $\dirname{invitations}$: Each source file within this package defines the invitation structs for all the roles a different protocol. These invitation structs contain the channels needed for the roles to send and receive invitaions during their execution. We also define two special structs which are used to group the channels used to send the invitations during the setup of a protocol call. 
+    \item $\dirname{invitations}$: Each source file within this package defines the invitation structs for all the roles a different protocol. These invitation structs contain the channels needed for the roles to send and receive invitations during their execution. We also define two special structs which are used to group the channels used to send the invitations during the setup of a protocol call. 
     \item $\dirname{results}\dirname{protocol\_pkg}$: Within each of these packages we generate empty structs which represent the return values of each of the roles of the protocol.
     \item $\dirname{callbacks}$: This package stores the definitions of the callbacks interfaces of all the roles of all the protocols. The files for dynamic roles also define a function which the user should implement to return an instance of the interface for that role. The callbacks file for a role may contain enums whose values represent the possible alternatives for a choice the role makes.
     \item $\dirname{protocol}$: This package contains the logic for the initial setup for the entry-point protocol. It defines an interface which is used to allow the user to provide an initial state for each of the roles in the protocol, as well as to aggregate the results of each of the roles when they finish executing. It also defines several functions to create all the channels, start the execution of all the roles and synchronise the ending of the protocol.
@@ -1675,7 +1683,7 @@ Every labelled message exchange in a protocol is carried out over a separte chan
 
 In Figure \ref{channel-struct-gen} we show what the struct generated by the scheme we have described would look like. Every field in the struct is generated from a labeled message exchange in the protocol's local type. The field names inside the struct that we generate must have unique names, but in our definition we assume that this is achieved in the implementation.
 
-\subsection{Package \texttt{invitations}}
+\subsection{Package \texttt{invitations}}\label{pkg-invitations}
 In this package we define the invitation structs for the roles in all the protocols defined in the Scribble module. All the invitation structs for the roles of a protocol are stored in one same file named after the protocol they belong to: $\filename{protocol}$. These files are all stored directly inside the package to avoid cyclic dependencies.\\
 
 As we discussed in Section \ref{design-overview}, in our implementation, invitations consist of two structs: the channel struct and the invitation struct for the role that the participant is going to undertake in a protocol call. These structs contain fresh channels that the role can use to communicate with the other participants in the subsession. For this reason, in order to send or receive an invitation two different channels are required.\\
@@ -1688,8 +1696,12 @@ In our design we use different channels each time we send or receive an invitati
             $\mathit{Env\ =\ Env\,',\ protocol\,' \mapsto \{\roles{role\,'}{n};\ \roles{role\,''}{m}\}}$\\\\
 
             $(\;\invite(\roles{role}{n})\ \scrto\ \mathit{protocol\,'};\;)\ \implies$\\[6pt]
-            $\gotype\ \structname{\localprotocol{role}{protocol}\_InviteChan}\ \gostruct\ \{$\\[3pt]
+
+            {\footnotesize
+            $\gotype\ \structname{\localprotocol{role}{protocol}\_InviteChan}\ \gostruct\ \{$}\\[3pt]
+            {\footnotesize
             \begin{tabular}{lll}
+                
                 \indent & $\dots$ & \\[9pt]
                 \indent & $\structfield{Invite\_role_1\_To\_\localprotocol{role'_1}{protocol'}}$\ &$\gochan\ \;\pkgstructaccess{protocol'\_channels}{role_1\!'\_Chan}$\\
                 \indent & $\structfield{Invite\_role_n\_To\_\localprotocol{role'_n}{protocol'}\_InviteChan}$\ &$\gochan\ \; \structname{\localprotocol{role_n\!'}{protocol\,'}\_InviteChan}$\\
@@ -1697,21 +1709,25 @@ In our design we use different channels each time we send or receive an invitati
                 \indent & $\structfield{Invite\_role_n\_To\_\localprotocol{role'_n}{protocol'}}$\ &$\gochan\ \;\pkgstructaccess{protocol'\_channels}{role_n\!'\_Chan}$\\
                 \indent & $\structfield{Invite\_role_n\_To\_\localprotocol{role'_n}{protocol'}\_InviteChan}$\ &$\gochan\ \; \structname{\localprotocol{role_n\!'}{protocol\,'}\_InviteChan}$\\[7pt]
                 \indent & $\dots$ & 
-            \end{tabular}\\
-            $\}$\\\\[5pt]
+            \end{tabular}}\\
+            {\footnotesize$\}$}\\\\[5pt]
 
 
             $\mathit{if\ role\ \neq\ role_0},\ then:$\\[6pt]
             $(\;\accept\ \mathit{\localprotocol{role\,'_i\,}{protocol}\,'}(\roles{role}{n};\ \scrnew\ \roles{role\,''}{m})\ \from\ \mathit{role_0}\,;\;)\ \implies$\\[6pt]
-            $\gotype\ \structname{\localprotocol{role}{protocol}\_InviteChan}\ \gostruct\ \{$\\[3pt]
+            
+            {\footnotesize
+            $\gotype\ \structname{\localprotocol{role}{protocol}\_InviteChan}\ \gostruct\ \{$}\\[3pt]
+
+            {\footnotesize
             \begin{tabular}{lll}
                 \indent & $\dots$ & \\[9pt]
                 \indent & $\structfield{role_0\_Invite\_To\_\localprotocol{role'_i}{protocol'}}$\ &$\gochan\ \;\pkgstructaccess{protocol'\_channels}{role\,'_i\,\_Chan}$\\
                 \indent & $\structfield{role_0\_Invite\_To\_\localprotocol{role'_i}{protocol'}\_InviteChan}$\ &$\gochan\ \; \structname{\localprotocol{role\,'_i\,}{protocol\,'}\_InviteChan}$\\
                 [7pt]
                 \indent & $\dots$ & 
-            \end{tabular}\\
-            $\}$\\[6pt]
+            \end{tabular}}\\
+            {\footnotesize$\}$}\\[6pt]
             
             $\mathit{otherwise\ no\ new\ fields\ are\ added}$
             
@@ -1723,8 +1739,32 @@ In our design we use different channels each time we send or receive an invitati
 
 We illustrate the process of how we add fields to a role's invitation struct using it's local type in Figure \ref{invitation-struct-gen}. We name the structs using the local protocol they are generated from in order to be able to clearly be able to identify them whenever they are used. The channel fields inside the struct are named differently depending on whether the channel is used for sending or receiving invitations. In the case where a role is sending itself an invitation, we name it following the scheme for channels used to send invitations.\\
 
-The channel used to send the channel struct for the new new role needs to refer to the struct defined inside the $\pkgname{channels}$ package. However, the type of the invitations struct is defined within the $\pkgname{invitations}$ package itself, so it is possible to access them directly. It would not be possible to move the declarations of each protocol into a different package, because it is possible for protocols to be mutually recursive, and trying to import the invitations structs could cause cyclic imports.
+The channel used to send the channel struct for the new new role needs to refer to the struct defined inside the $\pkgname{channels}$ package. However, the type of the invitations struct is defined within the $\pkgname{invitations}$ package itself, so it is possible to access them directly. It would not be possible to move the declarations of each protocol into a different package, because it is possible for protocols to be mutually recursive, and trying to import the invitations structs could cause cyclic imports.\\
 
+We also define in this package two more structs in each file, which are used to send the invitations during the setup of a protocol call. One of them will contain the channels over which to send the role channel structs to the participants, one for each non-dynamic participant in the protocol, and similarly for the other one, which will contain the channels over which to send the invitation structs to the participants. be us the role channel struct which contain the channels over which to send the new role channel and invitation structs for each participant in a protocol call. The structure of these structs can be seen in Figure \ref{protocol-setup-structs-gen}, and more details on how they are used will be given in Section \ref{pkg-roles}.
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\gotype\ \structname{protocol\_\!RoleSetupChan}\ \gostruct\ \{$\\[3pt]
+            \begin{tabular}{lll}
+                \indent & $\structfield{role_1\_Chan}$\ &$\gochan\ \;\pkgstructaccess{protocol\_channels}{role_1\_Chan}$\\
+                \indent & $\dots$ & \\
+                \indent & $\structfield{role_n\_Chan}$\ &$\gochan\ \;\pkgstructaccess{protocol\_channels}{role_n\_Chan}$
+            \end{tabular}\\
+            $\}$\\\\[10pt]
+            $\gotype\ \structname{protocol\_\!InviteSetupChan}\ \gostruct\ \{$\\[3pt]
+            \begin{tabular}{lll}
+                \indent & $\structfield{role_1\_InviteChan}$\ &$\gochan\ \;\structname{role_1@protocol\_InviteChan}$\\
+                \indent & $\dots$ & \\
+                \indent & $\structfield{role_n\_InviteChan}$\ &$\gochan\ \;\structname{role_n@protocol\_InviteChan}$\
+            \end{tabular}\\
+            $\}$
+        \end{tabular}
+    \end{center}
+    \caption{Channel struct for role \textit{role} in protocol \textit{protocol}}
+    \label{protocol-setup-structs-gen}
+\end{figure}
 
 
 
@@ -1748,7 +1788,7 @@ We generate an empty struct for each non-dynamic role in the protocol. These str
     \label{result-struct-gen}
 \end{figure}
 
-\subsection{callbacks}
+\subsection{Package \texttt{callbacks}}\label{pkg-callbacks}
 In this package we define the interfaces for the callbacks environment of all the roles in all the protocols. This environment contains the signatures of all the functions which are called from the protocol's implementation. By providing an implementation of the interface, the user can define the behaviour of the protocol without actually modifying the functions which implement the behaviour of the different roles.\\
 
 Each interface is defined in a file named after one of the local protocols which was generated by the projection of the protocols in the Scribble module. By doing so, we guarantee that the file names will be unique, and also make it easy to identify where the implementation of each role is defined. The file may also contain definitions for enums which represent the different branches that the role can choose to follow in the choices it makes during its execution. We illustrate what the definition of the interface looks like in Figure \ref{callbacks-interface-gen}.\\
@@ -1772,53 +1812,7 @@ Each interface is defined in a file named after one of the local protocols which
 
 When a role receives a message, we add a callback which has the received message as an argument so the user can update the state of the environment as needed. On the other hand, when sending a message, the we add a callback to allow the user to create the message struct which needs to be sent. When accepting an invitation to participate in a protocol call, we generate two callbacks, one of which is called before the protocol call is carried out and the other one after the role has finished executing its interactions in the called protocol. The first callback returns the initial state for the role in the called protocol, allowing the user to use the role's current state when creating the new initial state. The second one allows the user to take information from the result returned after executing the called protocol, allowing the user to aggregate a partial result of the called protocol into the role's state. The implementation for our setup for a protocol call combines the sending of invitations to existing roles and the creation of the dynamic participants, so we produce a single callback for both local protocol constructs.\\
 
-We split the implementation of the $\choice$ construct into two parts: deciding which branch to execute and executing the interactions of the chosen branch.
-
-
-
-
-
-As we have seen, almost all the interaction inside the local protocol adds a new callback to the interface, as we define in Figure \ref{callbacks-gen}.
-Need flat structure/can't split interfaces by protocol because some methods in the interface may need to return an instance of one of the interfaces of a role in a different protocol, which could cause cyclic imports.
-
 \begin{figure}[!h]
-    \begin{center}
-        \begin{tabular}{l}
-            $(\,\scrmessage{msg}{payload}\ \from\ \mathit{role\,'};\,) \implies$\\[6pt]
-            
-            $\quad \functionname{msg\_From\_role\,'}\,(\,\varname{msg}\ \;\pkgstructaccess{protocol\_messages}{msg}\,)\;\ $\\[15pt]
-            
-            $(\,\scrmessage{msg}{payload}\ \scrto\ \mathit{role\,'};\,)\ \implies$\\[6pt] 
-            
-            $\quad \functionname{msg\_To\_role'}\,(\,)\;\ \pkgstructaccess{protocol\_messages}{msg}$\\[15pt]
-            
-            $(\,\acceptL{role\,'_i\,@protocol\,'}{role\,'}{role\,''}{role\,'}\,;\,)\ \implies$\\[6pt]
-            
-            $\quad \functionname{To\_\localprotocol{role\,'_i\,}{protocol\,'}\_Env}\,(\,)\;\ \interfacename{\localprotocol{role\,'_i\,}{protocol\,'}\_Env}$\\[3pt]
-
-            $\quad \functionname{ResultFrom\_\localprotocol{role\,'_i\,}{protocol\,'}}\,(\varname{result}\ \;\pkgstructaccess{protocol'\_results}{role'_i\,\_Result}\,)\;$\\[15pt]
-
-            $(\,\invite(\roles{role\,'}{n})\ \scrto\ \mathit{protocol\,'}\,;$\\[1.5pt] 
-            $\create(\rolessig{B}{m})\ \scrin\ \mathit{protocol\,'}\,;\,)\ \implies$\\[6pt]
-            
-            $\quad \functionname{protocol\,'\_Setup}\,(\,)$\\[15pt]
-
-            $(\,\choice\ \at\ \mathit{role\,'}\ \{\;\mathit{T_1}\;\}\ \scror\ ...\ \scror\ \{\;\mathit{T_n}\;\}\,)\ \implies$\\[6pt]
-            $\mathit{if\ role'\ =\ role\ then:}$\\[3pt]
-            
-            $\quad \functionname{role\_Choice}\,(\,)\;\ \enumtype{\localprotocol{role}{protocol}\_Choice}$\\[6pt]
-            $\mathit{otherwise\ no\ new\ callbacks\ are\ generated}$\\[15pt]
-
-            $(\,\scrend\,)\ \implies$\\[3pt] 
-            
-            $\quad \functionname{Done}\,(\,)\;\ \pkgstructaccess{protocol\_results}{role\_Result}$
-        \end{tabular}
-    \end{center}
-    \caption{Process for generating callbacks from role \textit{role}'s local protocol}
-    \label{callbacks-gen}
-\end{figure}
-
-\begin{figure}[]
     \begin{center}
         \begin{tabular}{l}
             \texttt{LABEL}\,(\,T\,) = \\[3pt]
@@ -1845,15 +1839,265 @@ Need flat structure/can't split interfaces by protocol because some methods in t
     \end{center}
     
     \caption{Scheme to generate enums for each of the branches in a $\choice$ made by role \textit{role}}
-    \label{}
+    \label{choice-enum-gen}
 \end{figure}
 
-\subsection{protocol}\label{entry-point}
-\subsection{roles}
-Setup for protocols needs to be defined here because it setup phase needs access to roles pkg to initialize dynamic participants, but roles pkg needs access to setup pkg to setup a nested protocol call .
-\subsubsection{recursion}
+When a role makes a $\choice$, it must decide which branch of execution to follow. Each branch starts by sending a different message to a non-empty set of roles. When executing the $\choice$, we first need the user to decide which branch to follow, and we define an enum type with one value for each branch in the $\choice$ to encode this decision. We introduce a callback which allows the user to return one of these enum values, which will be used to decide which branch to execute.\\
+
+The enum types and values we generate must be unique in the whole package, and we ensure that this is the case in our implementation. We incorporate the local protocol in the names we generate to show which role is making the choice. The enum values are named after the label of the first interaction in every branch of the $\choice$. We show how these enums are generated in Figure \ref{choice-enum-gen}. Enums in Golang are usually defined as constants whose type is a type alias of $\typename{int}$, and the use of the special $\goiota$ keyword auto-increments the values that each successive constant receives.\\
+
+If the role making the $\choice$ is not the role in the local protocol, then it is not necessary to generate any further callbacks, as the callbacks generated for the first interactions in each branch will be enough to distinguish which branch of execution was selected.\\
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\mathit{Env\ =\ Env\,',\ protocol\,' \mapsto \{\roles{role\,'}{n};\ \roles{role\,''}{m}\}}$\\\\
+
+            $(\,\scrmessage{msg}{payload}\ \from\ \mathit{role\,'};\,) \implies$\\[6pt]
+            
+            $\quad \functionname{msg\_From\_role\,'}\,(\,\varname{msg}\ \;\pkgstructaccess{protocol\_messages}{msg}\,)\;\ $\\[15pt]
+            
+            $(\,\scrmessage{msg}{payload}\ \scrto\ \mathit{role\,'};\,)\ \implies$\\[6pt] 
+            
+            $\quad \functionname{msg\_To\_role'}\,(\,)\;\ \pkgstructaccess{protocol\_messages}{msg}$\\[15pt]
+            
+            $(\,\acceptL{role\,'_i\,@protocol\,'}{role}{role\,''}{role_0}\,;\,)\ \implies$\\[6pt]
+            
+            $\quad \functionname{To\_\localprotocol{role\,'_i\,}{protocol\,'}\_Env}\,(\,)\;\ \interfacename{\localprotocol{role\,'_i\,}{protocol\,'}\_Env}$\\[3pt]
+
+            $\quad \functionname{ResultFrom\_\localprotocol{role\,'_i\,}{protocol\,'}}\,(\varname{result}\ \;\pkgstructaccess{protocol'\_results}{role'_i\,\_Result}\,)\;$\\[15pt]
+
+            $(\,\invite(\roles{role}{n})\ \scrto\ \mathit{protocol\,'}\,;$\\[1.5pt] 
+            $\create(\rolessig{role\,''}{m})\ \scrin\ \mathit{protocol\,'}\,;\,)\ \implies$\\[6pt]
+            
+            $\quad \functionname{protocol\,'\_Setup}\,(\,)$\\[15pt]
+
+            $(\,\choice\ \at\ \mathit{role\,'}\ \{\;\mathit{T_1}\;\}\ \scror\ ...\ \scror\ \{\;\mathit{T_n}\;\}\,)\ \implies$\\[6pt]
+            $\mathit{if\ role'\ =\ role\ then:}$\\[4pt]
+            
+            $\quad \functionname{role\_Choice}\,(\,)\;\ \enumtype{\localprotocol{role}{protocol}\_Choice}$\\[6pt]
+            $\mathit{otherwise\ no\ new\ callbacks\ are\ generated}$\\[15pt]
+
+            $(\,\scrend\,)\ \implies$\\[3pt] 
+            
+            $\mathit{if\ \mathit{role}\ \notin \mathtt{dynamic\_participants\,}\mathit{(protocol\,)}\ :}$\\[4pt]
+            
+            $\quad \functionname{Done}\,(\,)\;\ \pkgstructaccess{protocol\_results}{role\_Result}$\\[6pt]
+            
+            $\mathit{otherwise:}$\\[4pt]
+            
+            $\quad \functionname{Done}\,(\,)$\\[15pt]
+
+        \end{tabular}
+    \end{center}
+    \caption{Process for generating callbacks from role \textit{role}'s local protocol}
+    \label{callbacks-gen}
+\end{figure}
+
+
+Finally, as we mentioned in Section \ref{design-overview}, whenever a branch of the execution in the protocol finishes executing, which is encoded through the $\scrend$ local type, a call to a special callback will be made. This callback, which we name $\functionname{Done}(\,)$, is meant to allow the user to finalize the state of the role. In the case of non-dynamic participants, this callback will also return a result struct containing the useful information that the user wants to return from the role's final state. In this way, we allow the useful computation carried out during a protocol to be returned outside the subsession.\\
+
+The correspondance between the local protocol constructs and the callbacks we generated is shown if Figure \ref{callbacks-gen}. Note that the definitions we provide heare are just mean to illustrate how we generate callbacks from each construct. In order to do populate the interface, we recursively traverse the local protocol and generate the necessary callbacks for each of the local types with the scheme we describe.\\
+
+\subsubsection{State of Dynamic Participants}
+As we have seen, when a role accepts an invitations to a protocol call, the new environment they use while they act as that role is created from their current environment. However, for dynamic participants this is not possible, because dynamic participants are go routines which are created every time a protocol call is made. They don't have any prior state, so in order to create their state we generate the declarations for functions which return their initial state. These functions are stateless, so the user will not be able to provide any input when generating their state. However, this should not be a massive obstacle, as the user could choose to explicitly build up their state through labeled message exchanges in the protocol. We show what a function declaration would look like in Figure \ref{protocol-setup-func-gen}.
+\\
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\gofunc\ \functionname{New\_role@protocol\_State} \, (\,)\ \ \interfacename{\localprotocol{role}{protocol}\_Env}\ \ \{$\\[3pt]
+
+            \begin{tabular}{ll}
+                \indent & $\gopanic\,(\,\mathtt{"TODO: Implement"}\,)$\\[3.5pt]
+            \end{tabular}\\[3pt]
+            $\}$
+        \end{tabular}
+    \end{center}
+    \caption{Declaration of function to create the initial state of a dynamic role \textit{role} }
+    \label{protocol-setup-func-gen}
+\end{figure}
+
+\subsubsection{Package Design Restrictions}
+
+The reason why the definition of all the callback interfaces need to be placed in the same packages is, as we have mentioned numerous times, because protocol calls can be mutually recursive. The callbacks we generate for setting up the environment of the new role which a participant is going to undertake depends on the interface of that role. If the interfaces were defined across different packages, importing them the callbacks interfaces could cause cyclic imports. We therefore chose to ensure that they are all directly visible by placing them within the same package.
+
+\subsection{Package \texttt{protocol}}\label{entry-point}
+This package contains all the logic for initialising the roles for the entry-point protocol as well as aggregating the results from each of the roles. Inside the package we generate a single file named after the enty-point protocol, $\filename{protocol}$, where all the implementation is defined. Inside this file we define three things: an interface which we use to initialise the state of the roles in the protocol and aggregate the results they compute, a function where we create and assign the channels used by the roles to communicate and a set of functions for initialising each of the roles.\\
+
+As we mentioned in Section \ref{design-overview}, in order to generate an implementation of the protocol which can be easily parametrised by the user, we define an interface which returns the initial state of every role in the protocol. In order to initialise the protocol, we only require the user to provide an instance of the interface with the information required to generate the initial states of all the roles. We also use the same interface to aggregate the results returned by all the roles once they have finished executing. We show what the definition of an interface would look like in Figure \ref{setup-interface-gen}. The user will still hold a reference to the instance of the interface which was passed used in the initialisation, so aggregating the results produced by the roles in the interface will allow the user to have access to the protocol's "result".\\
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\gotype\ \interfacename{protocol\_Env}\ \gointerface\ \{$ \\[3pt]
+            \begin{tabular}{ll}
+                \indent & $\functionname{New\_role_1\_Env}\,()\;\ \pkginterfaceaccess{callbacks}{role_1@protocol\_Env}$\\[3.5pt]
+                \indent & ...\\[3.5pt]
+                \indent & $\functionname{New\_role_n\_Env}\,()\;\ \pkginterfaceaccess{callbacks}{role_n@protocol\_Env}$\\[10pt]
+                \indent & $\functionname{role_1\_Result}(\,\varname{result}\ \;\pkgstructaccess{protocol\_results}{role_1\_Result}\,)\;\ $\\[3.5pt]
+                \indent & ...\\[3.5pt]
+                \indent & $\functionname{role_1\_Result}(\,\varname{result}\ \;\pkgstructaccess{protocol\_results}{role_n\_Result}\,)\;\ $\\[3.5pt]
+            \end{tabular}\\[3pt]
+            $\}$
+        \end{tabular}
+
+    \end{center}
+    \caption{Entry-point protocol setup interface declaration}
+    \label{setup-interface-gen}
+\end{figure}
+
+The main function we generate is the one which holds all the logic to start the execution of all the roles. The function receives an instance of the protocol setup interface we have just described as a parameter and does the following:
+
+\begin{itemize}
+    \item Create all the channels required by all the roles in the protocol to send labeled messages. 
+    \item Create all the channels that the roles will need to send and receive invitations.
+    \item Create the channel and invitation structs for all the roles in the protocol, filling all the fields with the channels it created. 
+    
+    Every channel will be used exactly twice, once in the struct of the sender role and once in the struct of the receiver role. The only exception is the channels roles use to send inviations to themselves, which will only be used once to fill the corresponding fields in the invitation struct of that role.
+    \item Create a $\pkgstructaccess{sync}{WaitGroup}$ variable and increment its counter by the number of roles in the protocol.
+    
+    As we described in Section \ref{design-overview}, we use a wait group variable, $\varname{wg}$, to synchronize the ending of the protocol. All the roles will execute as different goroutines. We use a wait group to block the main thread's execution until all the roles have finished executing. Whenever one of the roles finishes executing, it will call the $\methodcall{wg}{Done}()$ method on the wait group, decrementing its internal counter, and the main thread's execution will only proceed once the counter drops to zero.
+
+    \item Use the protocol setup environment to create the initial state of all the roles.
+
+    \item Create a goroutine with the function to start the execution of each of the roles in the protocol, providing the setup interface, the wait group, the role's channel struct and invitation struct and the role's callback interface as parameters.
+\end{itemize}
+
+The functions we create to start the execution of each role in the entry-point protocol for the first time is slightly different from the one which implements the role's behaviour. We show how they are implemented in Figure \ref{role-start-function-gen}. They are very simple: the $\godefer$ statement ensures that no matter what, once current function finishes executing, either by returning a value or raising an exception, the function call given will be executed. In this case, we defer the execution of the call to decrement the wait group's counter. We then call the function implementing the role's behaviour, passing the wait group variable, the channel and invitation structs and the role's state as parameters. The role's result which is returned is then aggregated into the protocol result by passing it as a parameter to the role's callback in the protocol environment.\\
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\gofunc\ \functionname{Start\_\localprotocol{role}{protocol}} \, (\,\varname{protocolEnv}\ \;\interfacename{protocol\_Env},\ \,\varname{wg}\ \;*\pkgstructaccess{sync}{WaitGroup},$\\
+            
+            $\qquad \qquad \varname{roleChannels}\ \;\pkgstructaccess{protocol\_channels}{role\_Chan},$\\
+
+            $\qquad \qquad \varname{inviteChannels}\ \;\pkgstructaccess{invitations}{\localprotocol{role}{protocol}\_InviteChan},$\\
+
+            $\qquad \qquad \varname{env}\ \;\pkginterfaceaccess{callbacks}{\localprotocol{role}{protocol}\_Env}\,)\ \{$\\[3pt]
+
+            \begin{tabular}{ll}
+                \indent & $\godefer\ \methodcall{wg}{Done}\,(\,)$\\[3.5pt]
+                \indent & $\assignment{result}{\pkgfuncaccess{roles}{role@protocol}\,(\roleimplparams)}$\\[3.5pt]
+                \indent & $\methodcall{protocolEnv}{role\_Result}\,(\,\varname{result}\,)$
+            \end{tabular}\\[3pt]
+            $\}$
+        \end{tabular}
+
+    \end{center}
+    \caption{Role start function for role \textit{role} in protocol \textit{protocol}}
+    \label{role-start-function-gen}
+\end{figure}
+
+Decrementing the counter cannot be done inside the function which implements the role's behaviour, as that function can be called as a result of a protocol call, and the role's execution could continue after the function returned. If the counter is decremented too many times, it will drop to zero before all the goroutines finish executing. This means that the main thread would be able to continue executing, so the result returned to the user will be incomplete/erroneous. It is even possible for the main thread to completely finish executing before the goroutines are able to finish, forcefully terminating them. 
+
+
+\subsection{Package \texttt{roles}}\label{pkg-roles}
+This package contains the implementation for all the local protocols generated from the Scribble module as well as the logic for setting up a call to any of the protocols. The implementations are defined in files named after the local protocols, $\filename{role@protocol}$, which contain a single function containing all the logic. Similarly, the setup for each protocol is defined in a file named $\filename{protocol\_setup}$, where all the setup logic is contained within a single function.
+
+\subsubsection{Protocol Setup Functions}
+As we discussed in Section \ref{pkg-invitations}, our invitations consist of two structs: the channel and the invitation struct that the roles will need to communicate with the other roles in during the protocol call. The purpose of the setup function is to create the channel and invitation structs that all the roles participating in the protocol call will need, and making them available to the correct particpants. This process involves creating the channels for the dynamic participants as well, because non-dynamic roles can communicate with dynamic ones and we have to ensure that \textit{all} the roles have access to the channels they need to communicate. The process for setting up protocol calls is very similar to the one we described for intitializing the different roles for the entry-point protocol in Section \ref{entry-point}:
+
+\begin{itemize}
+    \item Create the channels that the roles will need for their labeled message exchanges.
+    \item Create the channels that the roles will need to send and receive invitations.
+    \item Create the structs for the channels and invitations of each role.
+    \item Send the invitations to the non-dynamic participants in the protocol.
+    \item If there are any dynamic participants in the protocol, then create a new goroutine for each one to execute the function implementing their behaviour.
+    
+    In order for the dynamic participants to be created they require an initial state. Because dynamic roles are always created from scratch every time a protocol call is made, we make them stateless. We allow the user to create the constant initial state of a dynamic role and return it using the extra function we generate in the $\pkgname{callbacks}$ package, which we described in Section \ref{pkg-callbacks}.
+
+    Because we are creating new goroutines, we must increment the counter of the wait group variable that keeps track of the number of roles still executing. Otherwise, the main thread could resume before all the roles had finished executing.
+\end{itemize}
+
+In order to send the invitations to the correct participants, the function must have access to the channels over which the participants are expecting the invitations to be sent. In order to do this, we use the two additional structs defined in $\pkgname{invitations}$ that we introduced in Section \ref{pkg-invitations}: $\structname{protocol\_RoleSetupChan}$ and {\color{dkyellow} \texttt{\seqsplit{protocol\_InviteSetupChan}}}. These structs the channels over which each role will be waiting to receive their invitations. Therefore, when sending the channel and invitation struct to each role we simply select the channels corresponding to that role in the struct. These two structs will be built by the caller of the protocol, who will have access to all the necessary channels, and passed in as parameters to the setup function.
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\gofunc\ \functionname{protocol\_SendCommChannels} \, (\,\varname{wg}\ \;*\pkgstructaccess{sync}{WaitGroup},$\\
+            
+            $\qquad \qquad \varname{roleChannels}\ \;\pkgstructaccess{invitations}{protocol\_RoleSetupChan},$\\
+
+            $\qquad \qquad \varname{inviteChannels}\ \;\pkgstructaccess{invitations}{protocol\_InviteSetupChan}\,)\ \{$\\[3pt]
+
+            \begin{tabular}{ll}
+                \indent & $\dots$\\[3.5pt]
+            \end{tabular}\\[3pt]
+            $\}$
+        \end{tabular}
+    \end{center}
+    \caption{Declaration of setup function for protocol \textit{protocol}}
+    \label{protocol-setup-func-gen}
+\end{figure}
+
+We also mentioned in our description how we need to increment the wait group by the number of dynamic participants in the protocol. However, we also need to decrement the counter once the role finishes executing. We do this by adding a $\godefer\ \methodcall{wg}{Done}\,(\,)$ call at the beginning of the function of a dynamic participant, as we show in Figure \ref{role-func-sig-gen}. Because we need to increment and decrement wait group's counter in order to synchronize the termination of the protocol correctly, we pass it in as a parameter to our function. We show the signature of a setup function in Figure \ref{protocol-setup-func-gen}.\\
+
+This design allows us to define all the logic for the protocol setup in a single function and call it from any protocol, as opposed to having to create to have a different implementation for the setup process every time a protocol call was made.
+
+\subsubsection{Role Implementation Functions}
+Our implementation of a role's behaviour requires 4 different components: 
+\begin{itemize}
+    \item A reference to the wait group which is used to monitor whether all roles have finished executing.
+    \item The struct containing the channels used by the role to exchange labeled messages with other roles in the protocol.
+    \item The struct containing the channels to send and receive invitations to nested protocol calls.
+    \item A variable containing the role's state, which implements the interface {\color{dkyellow} \textit{\seqsplit{role@protocol\_Env}}}, which gets updated as the role interacts with the other participants.
+\end{itemize}
+
+These four variables are passed in as parameters to the function implementing the role's behaviour. The signature of the functions we generate can be seen in Figure \ref{role-func-sig-gen}. There are two differences between the functions of a dynamic and non-dynamic role. Firstly, a dynamic role does not produce a result after it finishes executing. The purpose of introducing return values is so that the role which participated in a protocol call can carry any results computed outside of the protocol. However, dynamic participants are newly created every time a protocol call is made, so when the finish executing there will be no-one to process its return value. For the same reason, we can carry out the $\godefer\ \methodcall{wg}{Done}\,(\,)$ call inside the function, since the role finishes executing after the function returns. This was not possible for the entry-point function, were we had to create wrappers for initialising the roles of the entry-point protocol for the first time, as there is no guarantee that the role will finish executing after the function exits. 
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\llbracket\,\scrlocal\ \protocol\ \mathit{\localprotocol{role_i}{protocol}}(\rolessig{role}{n};$\\
+            $\qquad \qquad \qquad \qquad \qquad \qquad \qquad\, \scrnew\ \rolessig{role\,'}{m})\ \{\;\mathit{T}\;\,\}\,\rrbracket$ =\\[10pt]
+            
+            $\gofunc\ \functionname{\localprotocol{role_i\,}{protocol}}\,(\,\wg\;\ \texttt{*}\waitgroup,$\\
+
+            $\qquad \qquad \rolechannels\;\ \rolechantype{role_i}{protocol},$\\
+
+            $\qquad \qquad \invitechannels\;\ \invitechantype{role_i}{protocol},$\\
+            
+            $\qquad \qquad \envparam\;\ \envtype{role_i}{protocol}\,)\ \ \resulttype{role_i}{protocol}\ \ \{$\\[3pt]
+            
+            \begin{tabular}{ll}
+                \indent & $\llbracket \, T \, \rrbracket$
+            \end{tabular}\\[3pt]
+
+            $\}$\\[30pt]
+            
+            $\llbracket\,\scrlocal\ \protocol\ \mathit{\localprotocol{role\,'_i}{protocol}}(\rolessig{role}{n};$\\
+            $\qquad \qquad \qquad \qquad \qquad \qquad \qquad\, \scrnew\ \rolessig{role\,'}{m})\ \{\;\mathit{T}\;\,\}\,\rrbracket$ =\\[10pt]
+            
+            $\gofunc\ \functionname{\localprotocol{role\,'_i\,}{protocol}}\,(\,\wg\;\ \texttt{*}\waitgroup,$\\
+
+            $\qquad \qquad \rolechannels\;\ \rolechantype{role'_i}{protocol},$\\
+
+            $\qquad \qquad \invitechannels\;\ \invitechantype{role'_i}{protocol},$\\
+            
+            $\qquad \qquad \envparam\;\ \envtype{role'_i}{protocol}\,)\ \ \resulttype{role'_i}{protocol}\ \ \{$\\[6pt]
+            
+            \begin{tabular}{ll}
+                \indent & $\godefer\ \methodcall{wg}{Done}\,(\,)$\\[3.5pt]
+                \indent & $\llbracket \, T \, \rrbracket$
+            \end{tabular}\\[6pt]
+
+            $\}$\\
+
+        \end{tabular}
+    \end{center}
+    \caption{Generation of role \textit{role} implementation function from its local protocol}
+    \label{role-func-sig-gen}
+\end{figure}
+
+\subsubsection{Package Design Restrictions}
+
+Like many of the packages we have described, the files containing the implementation for the roles in each protocol cannot be separated into different packages. This is due to the fact that protocols can be mutually recursive, which means that the implementation of a roles in different protocols call call each other, which would cause cyclic dependecies if the files were stored in different packages. The files containing the setup for each protocol also need to be defined within the same package as the role implementations to avoid cyclic imports. If a protocol is recursive, then the implementation of for the role which carries out the recursive call will depend on the setup function, but the setup function depends on the implementation of the dynamic participants, as the dynamic participants are created within the setup function. Therefore, it would not be possible to define the implementation of the roles in a different package from the protocol setup logic.\\
+
 
 \section{Implementation of Local Protocols}\label{local-protocol-codegen}
+\subsubsection{recursion}
 % macros 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
