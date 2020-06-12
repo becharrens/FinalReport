@@ -31,9 +31,13 @@
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{abstract}
-We present the first implementation of the multiparty session types (MPST) theory of nested protocols, which allows calling a subprotocol during the execution of a parent protocol, possibly involving new participants in the subprotocol. We extend a MPST-based framework for specifying and statically verifying concurrent protocols with the nested protocol theory, introducing the definitions of nested protocols and nested protocol calls.\\
+Go is a programming languge which is widely used in industry, and its concurrency primitives - \textit{goroutines} and \textit{shared memory channels} - make it a popular choice for development in distributed systems. However, despite its inbuilt concurrency features, the language does not provide much support against concurrency errors such as deadlocks and race conditions.\\
 
-We design a scheme to generate APIs in Go for the roles taking part in each nested protocol, which ensures that they only perform I/O actions which comply with the protocol specification. Our implementation leverages Go's in-built concurrency primitives - \textit{goroutines} and \textit{shared memory channels} - to implement the behaviour of the roles and to allow them to communicate with each other. These primitives had not been treated in the previous MPST frameworks.\\
+Multiparty session types (MPST) provide a typing discipline for describing the interactions between processes, and they can be used to develop message-passing APIs where these kinds of concurrency bugs \textit{cannot} happen. However, previous implementations of MPST frameworks for Go did not treat Go's concurrency primitives, and they were unable to express a large number of APIs, which limited their practical applications.\\
+
+In order to bridge this gap, we present the first implementation of the MPST theory of nested protocols, which allows calling a subprotocol during the execution of a parent protocol, possibly involving new participants in the subprotocol. We extend a MPST-based framework for specifying and statically verifying concurrent protocols with the nested protocol theory, introducing the definitions of nested protocols and nested protocol calls.\\
+
+We design a scheme to generate APIs in Go for the roles taking part in each nested protocol which ensures that they only perform I/O actions which comply with the protocol specification. Our implementation also leverages Go's in-built concurrency primitives to implement the behaviour of the roles and to allow them to communicate with each other.\\
 
 We evaluate the expressiveness of our implementation by showing how it can be used to describe common distributed computing patterns. We then demonstrate how these patterns can be applied to implement three case studies and analyse their performance using a benchmark. 
 \end{abstract}
@@ -1893,7 +1897,7 @@ The correspondance between the local protocol constructs and the callbacks we ge
             $\quad \functionname{ResultFrom\_\localprotocol{role\,'_i\,}{protocol\,'}}\,(\varname{result}\ \;\pkgstructaccess{protocol'\_results}{role'_i\,\_Result}\,)\;$\\[15pt]
 
             $(\,\invite(\roles{role}{n})\ \scrto\ \mathit{protocol\,'}\,;$\\[1.5pt] 
-            $\create(\rolessig{role\,''}{m})\ \scrin\ \mathit{protocol\,'}\,;\,)\ \implies$\\[6pt]
+            $\ \,\create(\rolessig{role\,''}{m})\ \scrin\ \mathit{protocol\,'}\,;\,)\ \implies$\\[6pt]
             
             $\quad \functionname{protocol\,'\_Setup}\,(\,)$\\[15pt]
 
@@ -1929,7 +1933,7 @@ When a role makes a $\choice$, it must decide which branch of execution to follo
 \begin{figure}[!h]
     \begin{center}
         \begin{tabular}{l}
-            \texttt{LABEL}\,(\,T\,) = \\[3pt]
+            \texttt{LABEL}\,(\,\textit{T}\,) = \\[3pt]
             \begin{math}
                 \begin{cases}
                     \varname{msg} & \mathit{if}\ T\ =\ \scrmessage{msg}{payload}\ \scrto\ \mathit{role}\;;\ \mathit{T\,'}\\
@@ -2169,7 +2173,224 @@ Like many of the packages we have described, the files containing the implementa
 
 
 \section{Implementation of Local Protocols}\label{local-protocol-codegen}
+
+In this section we will define our scheme for implementing the behaviour of a Scribble local type in Golang. As we mentioned in Section \ref{pkg-roles}, a role's implementation uses 4 parameters: $\varname{wg},\ \varname{roleChannels}, \varname{inviteChannels}\ \text{and}\ \varname{env}$, which are used to access the channels used to communicate with other roles and to setup nested protocol calls and to maintain the role's state. The role's implementation mainly consists of the different interactions which it carries out with the other roles in the protocol, and the actual protocol logic is implemented through the callbacks which are interleaved between the interactions to update the role's state and guide the execution of the protocol.\\
+
+In the definitions of our code generation scheme, we assume that all the structs, functions and enums defined in the other packages have all been generated. We also assume that the signature of the role implementation functions for all the roles across all the protocols are known. 
+
+\subsection{Message Exchanges}\label{msg-exchanges-impl}
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\llbracket\,\varname{msg}\,(\,\varname{payload}\,)\ \from\ \mathit{role\,'}\,;\ T\,\rrbracket$ =\\[10pt]
+            
+            $\quad \assignment{msg}{\texttt{<-}\structaccess{\rolechannels}{role'\_msg}}$\\[3pt]
+            $\quad \methodcall{\envparam}{\functionname{msg\_From\_role\,'}}\params{\varname{msg}}$\\[3pt]
+            
+            $\quad \llbracket\,T\,\rrbracket$\\[30pt]
+            
+            $\llbracket\,\varname{msg}\,(\,\varname{payload}\,)\ \scrto\ \mathit{role\,'}\,;\,\rrbracket$ =\\[10pt]
+            
+            $\quad \assignment{msg}{\methodcall{\envparam}{msg\_To\_role\,'}\emptyparams}$\\[3pt]
+            $\quad \chansend{\structaccess{\rolechannels}{role'\_msg}}{msg}$\\[3pt]
+
+            $\quad \llbracket\,T\,\rrbracket$
+            
+
+        \end{tabular}
+    \end{center}
+    \caption{Code generation scheme for message exchanges carried out by \textit{role}}
+    \label{message-exchange-codegen}
+\end{figure}
+
+\subsection{Protocol Calls}\label{protocol-calls-impl}
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\mathit{Env\ =\ Env\,',\ protocol\,' \mapsto \{\roles{role\,'}{n};\ \roles{role\,''}{m}\}}$\\\\
+
+            $\llbracket\,\invite(\roles{role}{n})\ \scrto\ \mathit{protocol\,'}\,;$\\[1.5pt] 
+            $\ \,\,\create(\rolessig{role\,''}{m})\ \scrin\ \mathit{protocol\,'}\,;\ T\,\rrbracket$ =\\[10pt]
+            
+            {\footnotesize
+            $\quad \methodcall{\envparam}{protocol\_Setup}\,\emptyparams$}\\[3pt]
+
+            {\footnotesize
+            $\quad \varname{protocol'\_rolechan}\ :=\ \pkgstructaccess{invitations}{protocol'\_RoleSetupChan}\ \{$}\\[3pt]
+            {\footnotesize
+            \quad \begin{tabular}{lll}
+                \indent & $\structfield{role'_1\_Chan}:$\ &$\structaccess{\invitechannels}{Invite\_role_1\_To\_\localprotocol{role'_1}{protocol'}}$\\
+                \indent & $\dots$ & \\
+                \indent & $\structfield{role'_n\,\_Chan}:$\ &$\structaccess{\invitechannels}{Invite\_role_n\_To\_\localprotocol{role'_n}{protocol'}}$
+            \end{tabular}}\\
+
+            {\footnotesize
+            $\quad \}$}\\[3pt]
+
+            {\footnotesize
+            $\quad \varname{protocol'\_invitechan}\ :=\ \pkgstructaccess{invitations}{protocol'\_RoleSetupChan}\ \{$}\\[3pt]
+           
+            {\footnotesize
+            \quad \begin{tabular}{lll}
+                \indent & $\structfield{role'_1\_InviteChan}:$\ &$\structaccess{\invitechannels}{Invite\_role_1\_To\_\localprotocol{role'_1}{protocol'}\_InviteChan}$\\
+                \indent & $\dots$ & \\
+                \indent & $\structfield{role'_n\,\_InviteChan}:$\ &$\structaccess{\invitechannels}{Invite\_role_n\_To\_\localprotocol{role'_n}{protocol'}\_InviteChan}$
+            \end{tabular}}\\
+
+            {\footnotesize
+            $\quad \}$}\\[3pt]
+
+            {\footnotesize
+            $\quad \functionname{protocol\_SendCommChannels}\,\params{\wg,\ \varname{protocol'\_rolechan},\ ,\varname{protocol'\_invitechan}}$}\\[3pt]
+            
+            {\footnotesize
+            $\quad \llbracket\,T\,\rrbracket$}\\[30pt]
+
+            $\llbracket\,\acceptL{role\,'_i\,@protocol\,'}{role}{role\,''}{role_0}\,;\ T\,\rrbracket$ =\\[10pt]
+            
+            {\footnotesize
+            $\quad \assignment{role\,'_i@protocol\_chan}{\texttt{<-}\structaccess{\invitechannels}{role_0\_Invite\_To\_\localprotocol{role'_i}{protocol\,'}}}$}\\[3pt]
+
+            {\footnotesize
+            $\quad \varname{role\,'_i@protocol\_invitechan}\ :=\ $}\\[3pt]
+            
+            {\footnotesize
+            $\qquad \qquad \qquad\texttt{<-}\structaccess{\invitechannels}{role_0\_Invite\_To\_\localprotocol{role'_i}{protocol\,'}\_InviteChan}$}\\[3pt]
+
+            {\footnotesize
+            $\quad \assignment{role\,'_i\,@protocol\_env}{\methodcall{\envparam}{\functionname{To\_\localprotocol{role\,'_i\,}{protocol\,'}\_Env}}\,\emptyparams}$}\\[3pt]
+
+            {\footnotesize
+            $\quad \varname{role\,'_i\,@protocol\_result}\ :=\ \functionname{role'_i@protocol}\,(\,\wg,$}\\[3pt]
+            
+            {\footnotesize
+            $\quad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \quad \ \varname{role'_i@protocol\_chan},$}\\[3pt]
+
+            {\footnotesize
+            $\quad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \quad \ \varname{role\,'_i@protocol\_inviteChan},$}\\[3pt]
+
+            {\footnotesize
+            $\quad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \qquad \quad \ \varname{role\,'_i\,@protocol\_env}\,)$}\\[3pt]
+            
+            {\footnotesize
+            $\quad \methodcall{\envparam}{ResultFrom\_\localprotocol{role\,'_i\,}{protocol\,'}}\params{\varname{role\,'_i\,@protocol\_result}}$}\\[3pt]
+            
+            {\footnotesize
+            $\quad \llbracket\,T\,\rrbracket$}
+            
+            
+
+        \end{tabular}
+    \end{center}
+    \caption{Code generation scheme for message exchanges carried out by \textit{role}}
+    \label{message-exchange-codegen}
+\end{figure}
+
+\subsection{Choice}\label{choice-impl}
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\llbracket\,\choiceL{role}{T}{i}{\{\,1\,\dots\,n\,\}})\,\rrbracket$ =\\[10pt]
+            
+            $\quad \assignment{role\_choice}{\methodcall{\envparam}{Role\_Choice}\,\emptyparams}$\\[3pt]
+            
+            $\quad \goswitch\ \varname{role\_Choice}\ \{$\\[3pt]
+
+            $\quad \gocase\ \pkgenumaccess{callbacks}{\localprotocol{role}{protocol}\_LABEL(T_1)}:$\\[3pt]
+
+            $\qquad \llbracket\,T_1\,\rrbracket$\\[6pt]
+
+            $\quad \dots$\\[9pt]
+            
+            $\quad \gocase\ \pkgenumaccess{callbacks}{\localprotocol{role}{protocol}\_LABEL(T_n)}:$\\[3pt]
+
+            $\qquad \llbracket\,T_n\,\rrbracket$\\[6pt]
+
+            $\quad \godefault:$\\[3pt]
+
+            $\qquad \gopanic\,(\,\mathtt{"Invalid Choice"}\,)$\\[3pt]
+
+            $\quad \}$\\
+        \end{tabular}
+    \end{center}
+    \caption{Code generation scheme for a $\choice$ made by \textit{role}}
+    \label{role-makes-choice-codegen}
+\end{figure}
+
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            \texttt{GENERATE\_CASE}\,(\,\textit{Impl}\,) = \\[3pt]
+            \begin{math}
+                \begin{cases}
+                    \gocase\ \assignment{label\_var}{\text{<-}\varname{ch}}: & \mathit{if}\ \mathit{Impl}\ =\ [\assignment{label\_var}{\text{<-}\varname{ch}};\ \mathit{Impl\,'}]\\
+                    \quad \mathit{Impl\,'} & \\
+                    \mathit{undefined} & \mathit{otherwise}
+                \end{cases}
+            \end{math}\\\\[6pt]
+
+            $\llbracket\,\choiceL{role\,'}{T}{i}{\{\,1\,\dots\,n\,\}})\,\rrbracket$ =\\[10pt]
+            
+            $\quad \goselect\ \{$\\[3pt]
+
+            $\quad \mathtt{GENERATE\_CASE}\params{ \llbracket\,T_1\,\rrbracket}$\\[6pt]
+
+            $\quad \dots$\\[9pt]
+            
+            $\quad \mathtt{GENERATE\_CASE}\params{ \llbracket\,T_n\,\rrbracket}$\\[6pt]
+            $\quad \}$\\
+        \end{tabular}
+    \end{center}
+    \caption{Code generation scheme for a $\choice$ made by \textit{role}}
+    \label{role-receives-choice-codegen}
+\end{figure}
+
+Definition of \texttt{LABEL(T)} in Figure \ref{choice-enum-gen}
+
 \subsection{Recursion}\label{recursion-limitations}
+
+\begin{figure}[htb!]
+    \centering
+    \lstset{language=Scribble}
+    \begin{lstlisting}
+    
+    global protocol SendLoop(role Sender, role Recv) {
+        rec LOOP {
+            choice at Sender {
+                Msg() from Sender to Recv;
+                continue LOOP;
+            } or {
+                End() from Sender to Recv;
+            }
+        }
+    }
+    \end{lstlisting}
+    \caption{Protocol combining $\rec$ and $\choice$}
+    \label{scribble-nested-local}
+\end{figure}{}
+
+\subsection{End}
+\begin{figure}[!h]
+    \begin{center}
+        \begin{tabular}{l}
+            $\llbracket\,\scrend\,\rrbracket\ =\ $\\[3pt]
+            \quad 
+            \begin{math}
+                \begin{cases}
+                    \goreturn  & \textit{if}\ \textit{role} \in \mathtt{dynamic\_participants}(\,\textit{protocol}\,)\\
+                    \goreturn\ \methodcall{\envparam}{Done}\,\emptyparams & \textit{otherwise}
+                \end{cases}
+            \end{math}
+            
+            
+        \end{tabular}
+    \end{center}
+    \caption{Code generation scheme for $\scrend$ inside protocol $\localprotocol{role}{protocol}$}
+    \label{end-codegen}
+\end{figure}
+
 % macros 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 

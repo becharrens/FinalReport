@@ -132,6 +132,11 @@
 \newcommand{\goiota}{\kwd{iota}}
 \newcommand{\godefer}{\kwd{defer}}
 \newcommand{\gopanic}{\kwd{panic}}
+\newcommand{\goreturn}{\kwd{return}}
+\newcommand{\goswitch}{\kwd{switch}}
+\newcommand{\goselect}{\kwd{select}}
+\newcommand{\godefault}{\kwd{default}}
+\newcommand{\gocase}{\kwd{case}}
 % GO KWDS
 
 % Reserved words
@@ -183,7 +188,9 @@
 \newcommand{\pkgstructaccess}[2]{\pkgname{#1}.\structname{#2}}
 \newcommand{\pkginterfaceaccess}[2]{\pkgname{#1}.\interfacename{#2}}
 \newcommand{\pkgfuncaccess}[2]{\pkgname{#1}.\functionname{#2}}
+\newcommand{\pkgenumaccess}[2]{\pkgname{#1}.\enumvalue{#2}}
 \newcommand{\methodcall}[2]{\varname{#1}.\functionname{#2}}
+\newcommand{\structaccess}[2]{\varname{#1}.\structfield{#2}}
 \newcommand{\assignment}[2]{\varname{#1}\ :=\ #2}
 \newcommand{\waitgroup}{\pkgstructaccess{sync}{WaitGroup}}
 \newcommand{\rolechantype}[2]{\pkgstructaccess{#2\_channels}{#1\_Chan}}
@@ -191,4 +198,7 @@
 \newcommand{\envtype}[2]{\pkgstructaccess{callbacks}{\localprotocol{#1}{#2}\_Env}}
 \newcommand{\resulttype}[2]{\pkgstructaccess{#2\_results}{#1\_Result}}
 \newcommand{\roleimplparams}{\wg,\ \rolechannels,\ \invitechannels,\ \envparam}
+\newcommand{\params}[1]{(\,#1\,)}
+\newcommand{\emptyparams}{(\,)}
+\newcommand{\chansend}[2]{#1\ \texttt{<-}\ #2}
 % HELPER CMDS
