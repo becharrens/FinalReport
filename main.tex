@@ -518,7 +518,7 @@ global protocol Calc(role S , role C ) {
 \begin{figure}[h!]
     \centering
     \includegraphics[scale=0.53]{scribble_fsm.png}
-    \caption{CFSM for role S in Calculator Protocol}
+    \caption{CFSM for role S in the Calculator Protocol}
     \label{scribble_fsm}
 \end{figure}{}
 
@@ -944,7 +944,7 @@ Our proposed extensions to the syntax of Scribble local protocols are shown in F
         create(role Y) in NestedProtocol;
     }
     \end{lstlisting}
-    \caption{Scribble syntax for nested protocols}
+    \caption{Examples of Scribble local protocols showcasing the new syntax constructs}
     \label{scribble-nested-local}
 \end{figure}{}
 
@@ -1175,7 +1175,7 @@ The projection of the $\calls$ construct is based on the projection of the proto
                     (\mathit{G'} \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) &\\[13pt]
 
                     \accept\ \mathit{D_i@P}(\roles{A}{n};\ \scrnew\ \roles{B}{m})\ \from\ C; & \mathit{if}\ \mathit{A}\ \neq\ \mathit{C},\ \exists i. C\ =\ A_i\\[0.25pt]
-                    (\mathit{G'} \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \\[13pt]
+                    (\mathit{G'} \projectenv{Env,\ P\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \\[17pt]
 
                     (\mathit{G'} \projectenv{Env,\ \mathit{P}\ \mapsto\ \{\roles{D}{n};\ \roles{B}{m}\}}) & \mathit{otherwise}
                 \end{cases}
@@ -1839,7 +1839,7 @@ We also define two more structs in each file, which are used to send the invitat
             $\}$
         \end{tabular}
     \end{center}
-    \caption{Channel struct for role \textit{role} in protocol \textit{protocol}}
+    \caption{Channel structs used during a protocol call setup}
     \label{protocol-setup-structs-gen}
 \end{figure}
 
@@ -2122,7 +2122,7 @@ In order to send the invitations to the correct participants, the function must 
             $\}$
         \end{tabular}
     \end{center}
-    \caption{Declaration of setup function for protocol \textit{protocol}}
+    \caption{Declaration of protocol call setup function for protocol \textit{protocol}}
     \label{protocol-setup-func-gen}
 \end{figure}
 
@@ -2181,7 +2181,7 @@ These four variables are passed in as parameters to the function implementing th
 
         \end{tabular}
     \end{center}
-    \caption{Generation of role \textit{role} implementation function from its local protocol}
+    \caption{Generation of role \textit{role}'s implementation function from its local protocol}
     \label{role-func-sig-gen}
 \end{figure}
 
@@ -2488,7 +2488,7 @@ The end local type signifies that the protocol has finished, and the code we gen
             
         \end{tabular}
     \end{center}
-    \caption{Code generation scheme for $\scrend$ inside protocol $\localprotocol{role}{protocol}$}
+    \caption{Code generation scheme for $\scrend$ inside protocol $\textit{\localprotocol{role}{protocol}}$}
     \label{end-codegen}
 \end{figure}
 
