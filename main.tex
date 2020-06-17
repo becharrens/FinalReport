@@ -5,7 +5,7 @@
 \newcommand{\reportauthor}{Benito Echarren Serrano}
 \newcommand{\supervisor}{Prof. Nobuko Yoshida}
 \newcommand{\secondmarker}{Dr. Iain Phillips}
-\newcommand{\reporttype}{Final Report}
+\newcommand{\reporttype}{MEng Individual Project}
 \newcommand{\degreetype}{MEng Computing} 
 
 \newcommand{\comment}[1]{}
@@ -2229,7 +2229,7 @@ In order to receive a labelled message from a different role, we first assign th
 \section{Protocol Calls}\label{protocol-calls-impl}
 The code generation process for protocol calls consists of two different parts: setting up a protocol call, given by $\invite$ and $\create$, and accepting an invitation to participate in a nested protocol, which is encoded by $\accept$. We show the code generation scheme for these constructs in Figure \ref{protocol-setup-codegen}.\\
 
-First, the role calls the $\functionname{protocol\_Setup}$ callback to update its state before the protocol setup. Setting up a protocol call involves generating and sending all the invitations to the participants as well as creating new goroutines for the dynamic participants. As we described in Section \ref{pkg-roles}, this logic is implemented in the {\color{dkred}\textit{\seqsplit{protocol\_SendCommChannels}}} function. Before calling it, a $\mathit{role}$ must first create the two protocol setup structs which the function takes in as parameters. The fields of the role and invitation setup structs must be set to the channels that the participating roles will use to receive their invitations, matching each participant to the role they will carry out. As we described in \ref{pkg-invitations}, these invitation channels will be stored in the role's $\invitechannels$ struct. Once these structs are created, the role can call the setup function for that protocol.\\
+First, the role calls the $\functionname{protocol\_Setup}$ callback to update its state before the protocol setup. Setting up a protocol call involves generating and sending all the invitations to the participants as well as creating new goroutines for the dynamic participants. As we described in Section \ref{pkg-roles}, this logic is implemented in the {\color{dkred}\textit{\seqsplit{protocol\_SendCommChannels}}} function. Before calling it, a $\mathit{role}$ must first create the two protocol setup structs which the function takes in as parameters. The fields of the role and invitation setup structs must be set to the channels that the participating roles will use to receive their invitations, matching each participant to the role they will carry out. As we described in Section \ref{pkg-invitations}, these invitation channels will be stored in the role's $\invitechannels$ struct. Once these structs are created, the role can call the setup function for that protocol.\\
 
 The code generation for the $\accept$ construct not only generates the code for accepting the invitation and participating in the protocol, but also collects the results from the protocol call and updates the role state with it. The definition we show assumes that the role which initiates the protocol call is not the same as the current role. As we explained in Section \ref{pkg-invitations} when a role accepts an invitation it sends to itself, the channels used are the same ones which were used to send the invitation.\\
 
@@ -2574,7 +2574,7 @@ Another common pattern used to carry out tasks in a distributed system is a pipe
 \end{figure}{}
 
 
-Our approach for defining this protocol, shown in \ref{pipeline-protocol}, is the same as the one we used to define a dynamic ring in \ref{ring}. The protocol for forwarding the message to a new intermediate node remains the same as before, but we remove the last interaction to send the message back to the initial role in the \texttt{Pipeline} protocol.
+Our approach for defining this protocol, shown in Figure \ref{pipeline-protocol}, is the same as the one we used to define a dynamic ring in Section \ref{ring}. The protocol for forwarding the message to a new intermediate node remains the same as before, but we remove the last interaction to send the message back to the initial role in the \texttt{Pipeline} protocol.
 
 \subsection{Fork-Join Protocol}\label{forkjoin}
 Distributed computation tasks often adopt a divide and conquer approach, where a large task is divided into smaller ones which are executed in parallel before aggregating all of the results from the subtasks together. This approach can be encoded in the fork-join model, which involves two stages: the \textbf{fork} and the \textbf{join} phase. During the fork phase, the main thread assigns each subtask to a different thread of execution without waiting for the result, and in the join phase the main thread waits to receive the results of all the subtasks which were spawned in the initial phase.\\
